@@ -1,0 +1,16 @@
+{
+  "name": "gamesense-workshop-refactor-tools",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Semantic refactor and audit tooling for the dumped gamesense Lua workshop scripts.",
+  "scripts": {
+    "audit": "node audit.js",
+    "refactor": "node refactor.js",
+    "format": "stylua \"../../*.lua\" \"../../libraries/*.lua\"",
+    "check-format": "stylua --check \"../../*.lua\" \"../../libraries/*.lua\""
+  },
+  "dependencies": {
+    "@johnnymorganz/stylua-bin": "^2.4.0",
+    "luaparse": "^0.3.1"
+  }
+}

@@ -1,62 +1,94 @@
-slot1 = ui.new_color_picker("VISUALS", "Other ESP", "C4 Timer Color")
-slot2 = ui.new_slider("VISUALS", "Other ESP", "Radius", 20, 100, 50, true, "%")
-slot3 = ui.new_slider("VISUALS", "Other ESP", "Oval", 0, 50, 0, true, "%")
+local c4_timer_color_picker = ui.new_color_picker("VISUALS", "Other ESP", "C4 Timer Color")
+local radius_slider = ui.new_slider("VISUALS", "Other ESP", "Radius", 20, 100, 50, true, "%")
+local oval_slider = ui.new_slider("VISUALS", "Other ESP", "Oval", 0, 50, 0, true, "%")
+local enable_c4_timer_checkbox = ui.new_checkbox("VISUALS", "Other ESP", "Enable C4 Timer")
 
-function slot4(slot0, slot1, slot2, slot3, slot4, slot5)
-	slot6 = slot0 - slot3
-	slot7 = slot1 - slot4
+local function calculate_angles_between_points(x1, y1, z1, x2, y2, z2)
+    local delta_x = x1 - x2
+    local delta_y = y1 - y2
 
-	return math.deg(math.atan((slot2 - slot5) / math.sqrt(slot6 * slot6 + slot7 * slot7))), math.deg(math.atan(slot7 / slot6))
+    return math.deg(math.atan((z1 - z2) / math.sqrt(delta_x * delta_x + delta_y * delta_y))),
+        math.deg(math.atan(delta_y / delta_x))
 end
 
-function slot5(slot0, slot1, slot2, slot3, slot4, slot5, slot6)
-	slot7, slot8 = client.screen_size()
-	slot9, slot10, slot11 = client.camera_angles()
-	slot12, slot13 = uv0(slot0, slot1, slot2, slot3, slot4, slot5)
+local function project_to_screen_edge(world_x, world_y, world_z, local_x, local_y, local_z, oval_scale)
+    local screen_width, screen_height = client.screen_size()
+    local _, camera_yaw = client.camera_angles()
+    local _, target_yaw = calculate_angles_between_points(world_x, world_y, world_z, local_x, local_y, local_z)
+    local screen_angle = math.rad(camera_yaw - target_yaw - 90)
 
-	if math.rad(slot10 - slot13 - 90) < 0 and slot14 > -math.pi then
-		slot14 = slot14 + math.pi
-	end
+    if screen_angle < 0 and screen_angle > -math.pi then
+        screen_angle = screen_angle + math.pi
+    end
 
-	return slot7 * 0.5 + slot7 * (0.5 + ui.get(uv1) / 100) * slot6 * math.cos(slot14), slot8 * 0.5 + slot7 * 0.5 * slot6 * math.sin(slot14)
+    return screen_width * 0.5 + screen_width * (0.5 + ui.get(radius_slider) / 100) * oval_scale * math.cos(screen_angle),
+        screen_height * 0.5 + screen_width * 0.5 * oval_scale * math.sin(screen_angle)
 end
 
-function slot6()
-	for slot4 = 1, #entity.get_all("CPlantedC4") do
-		if entity.get_prop(slot0[slot4], "m_flC4Blow") < globals.curtime() then
-			return
-		end
+local function draw_c4_timer()
+    local planted_c4_entities = entity.get_all("CPlantedC4")
 
-		slot7 = math.floor((slot6 - globals.curtime()) * 10) / 10
-		slot8 = slot7 / cvar.mp_c4timer:get_int()
+    for index = 1, #planted_c4_entities do
+        local bomb_entity = planted_c4_entities[index]
+        local bomb_blow_time = entity.get_prop(bomb_entity, "m_flC4Blow")
 
-		if slot7 <= 0 or slot7 == nil then
-			return
-		end
+        if bomb_blow_time < globals.curtime() then
+            return
+        end
 
-		slot9, slot10, slot11 = entity.get_origin(entity.get_local_player())
-		slot12, slot13, slot14 = entity.get_origin(slot5)
-		slot15, slot16 = renderer.world_to_screen(slot12, slot13, slot14)
-		slot17, slot18, slot19, slot20 = ui.get(uv0)
+        local time_left = math.floor((bomb_blow_time - globals.curtime()) * 10) / 10
+        local progress_ratio = time_left / cvar.mp_c4timer:get_int()
 
-		if slot15 ~= nil and slot16 ~= nil then
-			renderer.circle_outline(slot15, slot16, 0, 0, 0, 200, 25, 270, 1, 8)
-			renderer.circle_outline(slot15, slot16, slot17, slot18, slot19, slot20, 25, 270, slot8, 8)
-			renderer.text(slot15, slot16, 255, 255, 255, 255, "c", 0, slot7)
-		else
-			slot21, slot22 = uv1(slot12, slot13, slot14, slot9, slot10, slot11, ui.get(uv2) / 200)
+        if time_left <= 0 then
+            return
+        end
 
-			renderer.circle_outline(slot21, slot22, 0, 0, 0, 200, 25, 270, 1, 8)
-			renderer.circle_outline(slot21, slot22, slot17, slot18, slot19, slot20, 25, 270, slot8, 8)
-			renderer.text(slot21, slot22, 255, 255, 255, 255, "c", 0, slot7)
-		end
-	end
+        local local_x, local_y, local_z = entity.get_origin(entity.get_local_player())
+        local bomb_x, bomb_y, bomb_z = entity.get_origin(bomb_entity)
+        local bomb_screen_x, bomb_screen_y = renderer.world_to_screen(bomb_x, bomb_y, bomb_z)
+        local color_r, color_g, color_b, color_a = ui.get(c4_timer_color_picker)
+
+        if bomb_screen_x ~= nil and bomb_screen_y ~= nil then
+            renderer.circle_outline(bomb_screen_x, bomb_screen_y, 0, 0, 0, 200, 25, 270, 1, 8)
+            renderer.circle_outline(
+                bomb_screen_x,
+                bomb_screen_y,
+                color_r,
+                color_g,
+                color_b,
+                color_a,
+                25,
+                270,
+                progress_ratio,
+                8
+            )
+            renderer.text(bomb_screen_x, bomb_screen_y, 255, 255, 255, 255, "c", 0, time_left)
+        else
+            local offscreen_x, offscreen_y =
+                project_to_screen_edge(bomb_x, bomb_y, bomb_z, local_x, local_y, local_z, ui.get(oval_slider) / 200)
+
+            renderer.circle_outline(offscreen_x, offscreen_y, 0, 0, 0, 200, 25, 270, 1, 8)
+            renderer.circle_outline(
+                offscreen_x,
+                offscreen_y,
+                color_r,
+                color_g,
+                color_b,
+                color_a,
+                25,
+                270,
+                progress_ratio,
+                8
+            )
+            renderer.text(offscreen_x, offscreen_y, 255, 255, 255, 255, "c", 0, time_left)
+        end
+    end
 end
 
-ui.set_callback(ui.new_checkbox("VISUALS", "Other ESP", "Enable C4 Timer"), function ()
-	if ui.get(uv0) then
-		client.set_event_callback("paint", uv1)
-	else
-		client.unset_event_callback("paint", uv1)
-	end
+ui.set_callback(enable_c4_timer_checkbox, function()
+    if ui.get(enable_c4_timer_checkbox) then
+        client.set_event_callback("paint", draw_c4_timer)
+    else
+        client.unset_event_callback("paint", draw_c4_timer)
+    end
 end)
