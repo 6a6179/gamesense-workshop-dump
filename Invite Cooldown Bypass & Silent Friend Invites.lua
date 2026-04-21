@@ -1,54 +1,66 @@
-slot1 = require("gamesense/steamworks").ISteamMatchmaking
-slot2 = panorama.open()
-MyPersonaAPI = slot2.MyPersonaAPI
-PartyListAPI = slot2.PartyListAPI
-slot3 = panorama.loadstring([[
+local matchmaking = require("gamesense/steamworks").ISteamMatchmaking
+local panorama_view = panorama.open()
+local my_persona_api = panorama_view.MyPersonaAPI
+local party_list_api = panorama_view.PartyListAPI
+local invite_bridge = panorama.loadstring([[
     let _ActionInviteFriend = FriendsListAPI.ActionInviteFriend;
     let Invites = [];
     
-    FriendsListAPI.ActionInviteFriend = (xuid)=>{
-        if ( !LobbyAPI.CreateSession() ) {
+    FriendsListAPI.ActionInviteFriend = (xuid) => {
+        if (!LobbyAPI.CreateSession()) {
             LobbyAPI.CreateSession();
             PartyListAPI.SessionCommand('MakeOnline', '');
         }
+
         Invites.push(xuid);
     };
 
     return {
-        get: ()=>{
+        get: () => {
             let inviteCache = Invites;
             Invites = [];
             return inviteCache;
         },
-        old: (xuid)=>{
+        old: (xuid) => {
             _ActionInviteFriend(xuid);
         },
-        shutdown: ()=>{
+        shutdown: () => {
             FriendsListAPI.ActionInviteFriend = _ActionInviteFriend;
         }
     }
 ]])()
-slot4 = ui.new_checkbox("Misc", "Miscellaneous", "Silent Invites")
 
-function slot5(slot0)
-	if uv0.GetLobbyID() ~= nil then
-		if not ui.get(uv1) then
-			PartyListAPI.SessionCommand("Game::ChatInviteMessage", string.format("run all xuid %s %s %s", MyPersonaAPI.GetXuid(), "friend", slot0))
-		end
+local silent_invites_checkbox = ui.new_checkbox("Misc", "Miscellaneous", "Silent Invites")
 
-		uv0.InviteUserToLobby(slot1, slot0)
-	else
-		client.delay_call(0.1, uv2, slot0)
-	end
+local function send_invite_to_lobby(xuid)
+    local lobby_id = matchmaking:GetLobbyID()
+
+    if lobby_id ~= nil then
+        if not ui.get(silent_invites_checkbox) then
+            party_list_api.SessionCommand(
+                "Game::ChatInviteMessage",
+                string.format("run all xuid %s %s %s", my_persona_api.GetXuid(), "friend", xuid)
+            )
+        end
+
+        matchmaking:InviteUserToLobby(lobby_id, xuid)
+    else
+        client.delay_call(0.1, send_invite_to_lobby, xuid)
+    end
 end
 
-function ()
-	for slot4 = 0, uv0.get().length - 1 do
-		uv1(slot0[slot4])
-	end
+local function flush_pending_invites()
+    local pending_invites = invite_bridge.get()
 
-	client.delay_call(0.05, uv2)
-end()
-client.set_event_callback("shutdown", function ()
-	uv0.shutdown()
+    for index = 0, pending_invites.length - 1 do
+        send_invite_to_lobby(pending_invites[index])
+    end
+
+    client.delay_call(0.05, flush_pending_invites)
+end
+
+flush_pending_invites()
+
+client.set_event_callback("shutdown", function()
+    invite_bridge.shutdown()
 end)

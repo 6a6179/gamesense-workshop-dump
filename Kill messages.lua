@@ -1,61 +1,72 @@
-slot0 = require("gamesense/uix")
-slot1 = client.exec
-slot2 = client.system_time
-slot3 = client.userid_to_entindex
-slot4 = entity.get_local_player
-slot5 = entity.get_player_name
-slot6 = entity.get_prop
-slot7 = string.format
-slot8 = ui.get
-slot9 = ui.new_checkbox
-slot10 = ui.new_textbox
-slot11 = ui.set_callback
-slot12 = ui.set_visible
-slot13, slot14 = nil
-slot15 = {}
+local kill_message_checkbox = ui.new_checkbox("LUA", "B", "Kill message")
+local kill_message_textbox = ui.new_textbox("LUA", "B", "Message text")
 
-function slot16(slot0)
-	if uv0(slot0.attacker) == uv1() then
-		slot1 = uv2(uv3)
+local placeholder_resolvers = {}
 
-		for slot5, slot6 in pairs(uv4) do
-			if slot1:find(slot5) then
-				slot1 = slot1:gsub(slot5, slot6(slot0))
-			end
-		end
+local function replace_all(text, needle, replacement)
+    local start_index = 1
 
-		uv5("say ", slot1)
-	end
+    while true do
+        local begin_index, end_index = text:find(needle, start_index, true)
+        if not begin_index then
+            break
+        end
+
+        text = text:sub(1, begin_index - 1) .. replacement .. text:sub(end_index + 1)
+        start_index = begin_index + #replacement
+    end
+
+    return text
 end
 
-function slot17(slot0)
-	uv1(uv2, uv0(slot0))
+local function update_textbox_visibility()
+    ui.set_visible(kill_message_textbox, ui.get(kill_message_checkbox))
 end
 
-function slot18(slot0, slot1)
-	uv0[slot0] = slot1
+local function on_player_death(event)
+    if not ui.get(kill_message_checkbox) then
+        return
+    end
+
+    local local_player = entity.get_local_player()
+    if client.userid_to_entindex(event.attacker) ~= local_player then
+        return
+    end
+
+    local message = ui.get(kill_message_textbox)
+
+    for token, resolver in pairs(placeholder_resolvers) do
+        if message:find(token, 1, true) then
+            message = replace_all(message, token, resolver(event))
+        end
+    end
+
+    client.exec("say " .. message)
 end
 
-function ()
-	uv0("$victim", function (slot0)
-		return uv0(uv1(slot0.userid))
-	end)
-	uv0("$attacker", function (slot0)
-		return uv0(uv1(slot0.attacker))
-	end)
-	uv0("$weapon", function (slot0)
-		return slot0.weapon
-	end)
-	uv0("$location", function (slot0)
-		return uv0(uv1(slot0.userid), "m_szLastPlaceName")
-	end)
-	uv0("$time", function ()
-		return uv0("%d:%02d:%02d", uv1())
-	end)
+placeholder_resolvers["$victim"] = function(event)
+    local victim = client.userid_to_entindex(event.userid)
+    return entity.get_player_name(victim) or ""
+end
 
-	uv6 = uv7.new_checkbox("LUA", "B", "Kill message")
-	uv8 = uv9("LUA", "B", "Message text")
+placeholder_resolvers["$attacker"] = function(event)
+    local attacker = client.userid_to_entindex(event.attacker)
+    return entity.get_player_name(attacker) or ""
+end
 
-	uv6:on("change", uv10)
-	uv6:on("player_death", uv11)
-end()
+placeholder_resolvers["$weapon"] = function(event)
+    return event.weapon or ""
+end
+
+placeholder_resolvers["$location"] = function(event)
+    local victim = client.userid_to_entindex(event.userid)
+    return entity.get_prop(victim, "m_szLastPlaceName") or ""
+end
+
+placeholder_resolvers["$time"] = function()
+    return string.format("%d:%02d:%02d", client.system_time())
+end
+
+ui.set_callback(kill_message_checkbox, update_textbox_visibility)
+client.set_event_callback("player_death", on_player_death)
+update_textbox_visibility()

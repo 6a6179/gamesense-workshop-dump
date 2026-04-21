@@ -1,58 +1,70 @@
-slot2 = entity.get_players
-slot3 = entity.get_prop
-slot4 = plist.get
-slot5 = plist.set
-slot6 = ui.get
-slot10 = ui.set_callback
-slot11 = ui.set_visible
-slot12 = require("bit")
-slot13 = ui.new_checkbox("RAGE", "Other", "Force safe point conditions")
-slot14 = ui.new_multiselect("RAGE", "Other", "\nbox", "Duck", "X > HP", "In air")
-slot15 = ui.new_slider("RAGE", "Other", "X > HP", 1, 100, 70, true, "HP", 1)
+local bit = require("bit")
 
-function slot16(slot0, slot1)
-	for slot5 = 1, #slot0 do
-		if slot0[slot5] == slot1 then
-			return true
-		end
-	end
+local force_safe_point_checkbox = ui.new_checkbox("RAGE", "Other", "Force safe point conditions")
+local condition_multiselect = ui.new_multiselect("RAGE", "Other", "\nbox", "Duck", "X > HP", "In air")
+local hp_slider = ui.new_slider("RAGE", "Other", "X > HP", 1, 100, 70, true, "HP", 1)
 
-	return false
+local function contains_value(values, needle)
+    for index = 1, #values do
+        if values[index] == needle then
+            return true
+        end
+    end
+
+    return false
 end
 
-function slot17(slot0)
-	uv2(uv3, uv1(uv0(slot0), "X > HP"))
+local function update_hp_slider_visibility(reference)
+    ui.set_visible(hp_slider, contains_value(ui.get(reference), "X > HP"))
 end
 
-function slot18(slot0)
-	slot1 = uv0(slot0)
+local function update_menu_visibility(reference)
+    local enabled = ui.get(reference)
 
-	uv1(uv2, slot1)
-	uv1(uv3, slot1)
-	uv4(uv2)
+    ui.set_visible(condition_multiselect, enabled)
+    ui.set_visible(hp_slider, enabled)
+    update_hp_slider_visibility(condition_multiselect)
 end
 
-client.set_event_callback("paint", function ()
-	if not uv0(uv1) then
-		return
-	end
+client.set_event_callback("paint", function()
+    if not ui.get(force_safe_point_checkbox) then
+        return
+    end
 
-	if #uv0(uv2) == 0 then
-		return
-	end
+    local selected_conditions = ui.get(condition_multiselect)
 
-	for slot9 = 1, #uv4(true) do
-		if uv3(slot1, "Duck") and uv5(slot5[slot9], "m_flDuckAmount") >= 0.7 or uv3(slot1, "X > HP") and uv5(slot10, "m_iHealth") <= uv0(uv6) or uv3(slot1, "In air") and uv7.band(uv5(slot10, "m_fFlags"), 1) == 0 then
-			uv8(slot10, "Override safe point", "On")
-		else
-			uv8(slot10, "Override safe point", "-")
-		end
-	end
+    if #selected_conditions == 0 then
+        return
+    end
+
+    local enemies = entity.get_players(true)
+
+    for index = 1, #enemies do
+        local enemy = enemies[index]
+        local should_force_safe_point = false
+
+        if contains_value(selected_conditions, "Duck") and entity.get_prop(enemy, "m_flDuckAmount") >= 0.7 then
+            should_force_safe_point = true
+        elseif
+            contains_value(selected_conditions, "X > HP")
+            and entity.get_prop(enemy, "m_iHealth") <= ui.get(hp_slider)
+        then
+            should_force_safe_point = true
+        elseif
+            contains_value(selected_conditions, "In air") and bit.band(entity.get_prop(enemy, "m_fFlags"), 1) == 0
+        then
+            should_force_safe_point = true
+        end
+
+        plist.set(enemy, "Override safe point", should_force_safe_point and "On" or "-")
+    end
 end)
-client.register_esp_flag("SP", 204, 204, 0, function (slot0)
-	return uv0(uv1) and uv2(slot0, "Override safe point") == "On"
+
+client.register_esp_flag("SP", 204, 204, 0, function(player)
+    return ui.get(force_safe_point_checkbox) and plist.get(player, "Override safe point") == "On"
 end)
-slot18(slot13)
-slot10(slot13, slot18)
-slot17(slot14)
-slot10(slot14, slot17)
+
+update_menu_visibility(force_safe_point_checkbox)
+ui.set_callback(force_safe_point_checkbox, update_menu_visibility)
+update_hp_slider_visibility(condition_multiselect)
+ui.set_callback(condition_multiselect, update_hp_slider_visibility)

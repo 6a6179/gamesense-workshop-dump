@@ -1,24 +1,31 @@
-slot0 = ui.new_checkbox("MISC", "Miscellaneous", "Auto plant")
-slot1 = ui.new_hotkey("MISC", "Miscellaneous", "Auto plant hotkey", true)
-slot2 = nil
+local auto_plant_checkbox = ui.new_checkbox("MISC", "Miscellaneous", "Auto plant")
+local auto_plant_hotkey = ui.new_hotkey("MISC", "Miscellaneous", "Auto plant hotkey", true)
 
-client.set_event_callback("setup_command", function (slot0)
-	if not ui.get(uv0) then
-		return
-	end
+local previous_can_plant = nil
 
-	slot1 = entity.get_local_player()
+client.set_event_callback("setup_command", function(command)
+    if not ui.get(auto_plant_checkbox) then
+        return
+    end
 
-	if (slot0.in_use == 1 or slot0.in_attack == 1 or ui.get(uv1)) and entity.get_classname(entity.get_player_weapon(slot1)) == "CC4" then
-		if (entity.get_prop(slot1, "m_bInBombZone") == 1 and bit.band(entity.get_prop(slot1, "m_fFlags"), 1) == 1) == false or uv2 == false then
-			slot0.in_attack = 0
-			slot0.in_use = 0
-		elseif slot2 then
-			slot0.in_attack = 1
-		end
+    local local_player = entity.get_local_player()
 
-		uv2 = slot2
-	else
-		uv2 = nil
-	end
+    if
+        (command.in_use == 1 or command.in_attack == 1 or ui.get(auto_plant_hotkey))
+        and entity.get_classname(entity.get_player_weapon(local_player)) == "CC4"
+    then
+        local can_plant = entity.get_prop(local_player, "m_bInBombZone") == 1
+            and bit.band(entity.get_prop(local_player, "m_fFlags"), 1) == 1
+
+        if not can_plant or previous_can_plant == false then
+            command.in_attack = 0
+            command.in_use = 0
+        elseif can_plant then
+            command.in_attack = 1
+        end
+
+        previous_can_plant = can_plant
+    else
+        previous_can_plant = nil
+    end
 end)

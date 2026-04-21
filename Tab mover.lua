@@ -1,20 +1,20 @@
-slot0 = config.load
-slot1 = ui.get
-slot2 = ui.new_button
-slot3 = ui.new_multiselect
-slot4 = ui.new_label
-slot5 = ui.new_textbox
-slot6, slot7, slot8, slot9 = nil
+local load_config = config.load
+local get_ui_value = ui.get
+local new_button = ui.new_button
+local new_multiselect = ui.new_multiselect
+local new_label = ui.new_label
+local new_textbox = ui.new_textbox
 
-function slot10()
-	for slot5 = 1, #uv0(uv1) do
-		uv3(uv0(uv2), slot0[slot5])
-	end
+local tab_mover_label = new_label("CONFIG", "Presets", "Tab mover")
+local config_name_textbox = new_textbox("CONFIG", "Presets", "Config name")
+local selected_tabs_multiselect = new_multiselect("CONFIG", "Presets", "\nTab", "Rage", "AA", "Legit", "Visuals", "Misc", "Skins")
+
+local function load_selected_tabs()
+    local config_name = get_ui_value(config_name_textbox)
+
+    for _, tab_name in ipairs(get_ui_value(selected_tabs_multiselect)) do
+        load_config(config_name, tab_name)
+    end
 end
 
-function ()
-	uv0 = uv1("CONFIG", "Presets", "Tab mover")
-	uv2 = uv3("CONFIG", "Presets", "Config name")
-	uv4 = uv5("CONFIG", "Presets", "\nTab", "Rage", "AA", "Legit", "Visuals", "Misc", "Skins")
-	uv6 = uv7("CONFIG", "Presets", "Load tab", uv8)
-end()
+local load_tab_button = new_button("CONFIG", "Presets", "Load tab", load_selected_tabs)

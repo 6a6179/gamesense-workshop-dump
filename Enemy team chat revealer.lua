@@ -1,14 +1,16 @@
-slot0 = require("gamesense/chat")
-slot1 = require("gamesense/localize")
-slot3 = panorama.open().GameStateAPI
-slot4 = {}
+local chat = require("gamesense/chat")
+local localize = require("gamesense/localize")
+local game_state_api = panorama.open().GameStateAPI
+local last_enemy_chat_times = {}
 
-function slot5(slot0)
-	if not entity.is_enemy(client.userid_to_entindex(slot0.userid)) then
+local function reveal_enemy_chat(event)
+	local player_entity = client.userid_to_entindex(event.userid)
+
+	if not entity.is_enemy(player_entity) then
 		return
 	end
 
-	if uv0.IsSelectedPlayerMuted(uv0.GetPlayerXuidStringFromEntIndex(slot1)) then
+	if game_state_api.IsSelectedPlayerMuted(game_state_api.GetPlayerXuidStringFromEntIndex(player_entity)) then
 		return
 	end
 
@@ -21,31 +23,33 @@ function slot5(slot0)
 	end
 
 	client.delay_call(0.2, function ()
-		if uv0[uv1] ~= nil and math.abs(globals.realtime() - uv0[uv1]) < 0.4 then
+		if last_enemy_chat_times[player_entity] ~= nil and math.abs(globals.realtime() - last_enemy_chat_times[player_entity]) < 0.4 then
 			return
 		end
 
-		slot1 = entity.get_prop(uv1, "m_szLastPlaceName")
+		local last_place_name = entity.get_prop(player_entity, "m_szLastPlaceName")
 
-		uv4.print_player(uv1, uv2(("Cstrike_Chat_%s_%s"):format(entity.get_prop(entity.get_player_resource(), "m_iTeam", uv1) == 2 and "T" or "CT", entity.is_alive(uv1) and "Loc" or "Dead"), {
-			s1 = entity.get_player_name(uv1),
-			s2 = uv3.text,
-			s3 = uv2(slot1 ~= "" and slot1 or "UI_Unknown")
+		chat.print_player(player_entity, localize(("Cstrike_Chat_%s_%s"):format(entity.get_prop(entity.get_player_resource(), "m_iTeam", player_entity) == 2 and "T" or "CT", entity.is_alive(player_entity) and "Loc" or "Dead"), {
+			s1 = entity.get_player_name(player_entity),
+			s2 = chat.text,
+			s3 = localize(last_place_name ~= "" and last_place_name or "UI_Unknown")
 		}))
 	end)
 end
 
-function slot6(slot0)
-	if not entity.is_enemy(slot0.entity) then
+local function remember_enemy_chat(event)
+	if not entity.is_enemy(event.entity) then
 		return
 	end
 
-	uv0[slot0.entity] = globals.realtime()
+	last_enemy_chat_times[event.entity] = globals.realtime()
 end
 
-ui.set_callback(ui.new_checkbox("MISC", "Miscellaneous", "Reveal enemy teamchat"), function ()
-	slot0 = ui.get(uv0) and client.set_event_callback or client.unset_event_callback
+local reveal_enemy_teamchat_checkbox = ui.new_checkbox("MISC", "Miscellaneous", "Reveal enemy teamchat")
 
-	slot0("player_say", uv1)
-	slot0("player_chat", uv2)
+ui.set_callback(reveal_enemy_teamchat_checkbox, function ()
+	local register_event_callback = ui.get(reveal_enemy_teamchat_checkbox) and client.set_event_callback or client.unset_event_callback
+
+	register_event_callback("player_say", reveal_enemy_chat)
+	register_event_callback("player_chat", remember_enemy_chat)
 end)

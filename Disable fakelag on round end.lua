@@ -1,15 +1,15 @@
-slot0 = ui.get
-slot1 = ui.set
-slot2 = ui.new_checkbox("aa", "fake lag", "Disable fake lag on round end")
-slot3 = ui.reference("aa", "fake lag", "enabled")
+local ui_get = ui.get
+local ui_set = ui.set
+local disable_fakelag_on_round_end_checkbox = ui.new_checkbox("aa", "fake lag", "Disable fake lag on round end")
+local fakelag_enabled_reference = ui.reference("aa", "fake lag", "enabled")
 
-client.set_event_callback("round_start", function (slot0)
-	if uv0(uv1) then
-		uv2(uv3, true)
+client.set_event_callback("round_start", function ()
+	if ui_get(disable_fakelag_on_round_end_checkbox) then
+		ui_set(fakelag_enabled_reference, true)
 	end
 end)
-client.set_event_callback("round_end", function (slot0)
-	if uv0(uv1) then
-		uv2(uv3, false)
+client.set_event_callback("round_end", function ()
+	if ui_get(disable_fakelag_on_round_end_checkbox) then
+		ui_set(fakelag_enabled_reference, false)
 	end
 end)

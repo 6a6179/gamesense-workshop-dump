@@ -1,22 +1,27 @@
-slot0 = 15
-slot1 = ui.new_checkbox("CONFIG", "Presets", "Third person animation")
-slot2 = {
-	ui.reference("Visuals", "Effects", "Force third person (alive)")
-}
-slot3 = ui.new_slider("CONFIG", "Presets", "Third person distance", 0, 180, 100)
-slot4 = ui.new_slider("CONFIG", "Presets", "Third person zoom speed", 1, 100, 25, true, "%", 1)
+local current_thirdperson_distance = 15
+local animation_checkbox = ui.new_checkbox("CONFIG", "Presets", "Third person animation")
+local thirdperson_reference = { ui.reference("Visuals", "Effects", "Force third person (alive)") }
+local distance_slider = ui.new_slider("CONFIG", "Presets", "Third person distance", 0, 180, 100)
+local speed_slider = ui.new_slider("CONFIG", "Presets", "Third person zoom speed", 1, 100, 25, true, "%", 1)
 
-client.set_event_callback("paint_ui", function ()
-	if ui.get(uv0) then
-		if not entity.is_alive(entity.get_local_player()) or not ui.get(uv1[1]) or not ui.get(uv1[2]) then
-			uv2 = 15
-		else
-			slot1 = ui.get(uv3)
-			slot2 = (slot1 - uv2) / ui.get(uv4)
-			uv2 = uv2 + (uv2 < slot1 and slot2 or -slot2)
-			uv2 = slot1 < uv2 and slot1 or uv2
+client.set_event_callback("paint_ui", function()
+    if ui.get(animation_checkbox) then
+        if
+            not entity.is_alive(entity.get_local_player())
+            or not ui.get(thirdperson_reference[1])
+            or not ui.get(thirdperson_reference[2])
+        then
+            current_thirdperson_distance = 15
+        else
+            local target_distance = ui.get(distance_slider)
+            local distance_delta = (target_distance - current_thirdperson_distance) / ui.get(speed_slider)
 
-			cvar.cam_idealdist:set_float(uv2)
-		end
-	end
+            current_thirdperson_distance = current_thirdperson_distance
+                + (current_thirdperson_distance < target_distance and distance_delta or -distance_delta)
+            current_thirdperson_distance = target_distance < current_thirdperson_distance and target_distance
+                or current_thirdperson_distance
+
+            cvar.cam_idealdist:set_float(current_thirdperson_distance)
+        end
+    end
 end)

@@ -1,33 +1,49 @@
-slot0 = "A"
-slot1, slot2 = client.screen_size()
-slot6 = ui.new_color_picker("LUA", slot0, "Cinematic black bars color", 0, 0, 0, 255)
-slot7 = ui.new_slider("LUA", slot0, "\n Cinematic black bars height", 1, slot2 / 2, math.floor(0.23809523809523808 * slot2 / 2 + 0.5), true, "px")
+local lua_container = "A"
+local screen_width, screen_height = client.screen_size()
+local black_bars_hotkey = ui.new_hotkey("LUA", lua_container, "Cinematic black bars hotkey", true)
+local black_bars_color = ui.new_color_picker("LUA", lua_container, "Cinematic black bars color", 0, 0, 0, 255)
+local black_bars_height = ui.new_slider(
+    "LUA",
+    lua_container,
+    "\n Cinematic black bars height",
+    1,
+    screen_height / 2,
+    math.floor(0.23809523809523808 * screen_height / 2 + 0.5),
+    true,
+    "px"
+)
+local black_bars_checkbox = ui.new_checkbox("LUA", lua_container, "Cinematic black bars")
 
-ui.set(ui.new_hotkey("LUA", slot0, "Cinematic black bars hotkey", true), "Always on")
+ui.set(black_bars_hotkey, "Always on")
 
-slot8 = nil
-slot9 = 0
+local default_safe_zone = 0
+local animation_progress = 0
 
-function slot10()
-	uv0 = tonumber(cvar.safezoney:get_string())
+local function update_menu_state()
+    default_safe_zone = tonumber(cvar.safezoney:get_string())
 
-	cvar.safezoney:set_raw_float(uv0)
-	ui.set_visible(uv1, ui.get(uv2))
-	ui.set_visible(uv3, ui.get(uv2))
+    cvar.safezoney:set_raw_float(default_safe_zone)
+
+    local enabled = ui.get(black_bars_checkbox)
+
+    ui.set_visible(black_bars_hotkey, enabled)
+    ui.set_visible(black_bars_height, enabled)
 end
 
-slot10()
-ui.set_callback(ui.new_checkbox("LUA", slot0, "Cinematic black bars"), slot10)
-client.set_event_callback("shutdown", slot10)
-client.set_event_callback("paint_ui", function ()
-	uv2 = math.max(0, math.min(1, uv2 + 0.02 * (ui.get(uv0) and ui.get(uv1) and 1 or -1)))
-	slot1 = (math.sin(uv2 * math.pi - math.pi / 2) + 1) / 2
-	slot2 = ui.get(uv3)
-	slot3 = {
-		ui.get(uv4)
-	}
+update_menu_state()
+ui.set_callback(black_bars_checkbox, update_menu_state)
+client.set_event_callback("shutdown", update_menu_state)
+client.set_event_callback("paint_ui", function()
+    animation_progress = math.max(
+        0,
+        math.min(1, animation_progress + 0.02 * (ui.get(black_bars_checkbox) and ui.get(black_bars_hotkey) and 1 or -1))
+    )
 
-	renderer.rectangle(0, 0, uv5, slot2 * slot1, slot3[1], slot3[2], slot3[3], slot3[4])
-	renderer.rectangle(0, uv6, uv5, slot2 * slot1 * -1, slot3[1], slot3[2], slot3[3], slot3[4])
-	cvar.safezoney:set_raw_float((uv6 - slot2 * slot1 * 2) / uv6 * uv7)
+    local eased_progress = (math.sin(animation_progress * math.pi - math.pi / 2) + 1) / 2
+    local bar_height = ui.get(black_bars_height)
+    local r, g, b, a = ui.get(black_bars_color)
+
+    renderer.rectangle(0, 0, screen_width, bar_height * eased_progress, r, g, b, a)
+    renderer.rectangle(0, screen_height, screen_width, bar_height * eased_progress * -1, r, g, b, a)
+    cvar.safezoney:set_raw_float((screen_height - bar_height * eased_progress * 2) / screen_height * default_safe_zone)
 end)

@@ -1,29 +1,35 @@
-slot0 = require("gamesense/csgo_weapons")
-slot1 = require("table.clear")
-slot2 = ui.get
-slot3 = {}
+local csgo_weapons = require("gamesense/csgo_weapons")
+local clear_table = require("table.clear")
+local ui_get = ui.get
+local hidden_viewmodel_weapon_ids = {}
 
-function slot4()
-	for slot3, slot4 in pairs(uv0) do
-		if slot4.raw.hide_view_model_zoomed then
-			table.insert(uv1, slot3)
+local function disable_viewmodel_hiding()
+	for weapon_id, weapon in pairs(csgo_weapons) do
+		if weapon.raw.hide_view_model_zoomed then
+			table.insert(hidden_viewmodel_weapon_ids, weapon_id)
 
-			slot4.raw.hide_view_model_zoomed = false
+			weapon.raw.hide_view_model_zoomed = false
 		end
 	end
 end
 
-ui.set_callback(ui.new_checkbox("VISUALS", "Effects", "Show viewmodel in scope"), function ()
-	if uv0(uv1) then
-		uv2()
+local function restore_viewmodel_hiding()
+	for index = 1, #hidden_viewmodel_weapon_ids do
+		csgo_weapons[hidden_viewmodel_weapon_ids[index]].raw.hide_view_model_zoomed = true
+	end
+
+	clear_table(hidden_viewmodel_weapon_ids)
+end
+
+local show_viewmodel_in_scope_checkbox = ui.new_checkbox("VISUALS", "Effects", "Show viewmodel in scope")
+
+ui.set_callback(show_viewmodel_in_scope_checkbox, function ()
+	if ui_get(show_viewmodel_in_scope_checkbox) then
+		disable_viewmodel_hiding()
 	else
-		uv3()
+		restore_viewmodel_hiding()
 	end
 end)
 client.set_event_callback("shutdown", function ()
-	for slot3 = 1, #uv0 do
-		uv1[uv0[slot3]].raw.hide_view_model_zoomed = true
-	end
-
-	uv2(uv0)
+	restore_viewmodel_hiding()
 end)
