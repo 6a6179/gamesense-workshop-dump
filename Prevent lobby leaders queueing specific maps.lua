@@ -1,5 +1,5 @@
-slot0 = panorama.open()
-slot1 = {
+local panoramaAPI = panorama.open()
+local mapGroupNamesBySelection = {
 	["Mirage (Scrimmage)"] = "mg_de_mirage_scrimmagemap",
 	Swamp = "mg_de_swamp",
 	Mutiny = "mg_de_mutiny",
@@ -20,7 +20,7 @@ slot1 = {
 	Office = "mg_cs_office",
 	Agency = "mg_cs_agency"
 }
-slot3 = ui.new_multiselect("Config", "Presets", "Blacklisted maps", {
+local blacklistedMaps = ui.new_multiselect("Config", "Presets", "Blacklisted maps", {
 	"Mirage",
 	"Inferno",
 	"Overpass",
@@ -40,49 +40,52 @@ slot3 = ui.new_multiselect("Config", "Presets", "Blacklisted maps", {
 	"Rialto",
 	"Lake"
 })
-slot4 = ui.new_checkbox("Config", "Presets", "Auto-message when queue is cancelled")
-slot5 = 0
+local autoMessageWhenQueueIsCancelled = ui.new_checkbox("Config", "Presets", "Auto-message when queue is cancelled")
+local lastAutoMessageTime = 0
 
 ui.new_button("Config", "Presets", "Stop matchmaking", function ()
-	if uv0.LobbyAPI.IsSessionActive() then
-		uv0.LobbyAPI.StopMatchmaking()
+	if panoramaAPI.LobbyAPI.IsSessionActive() then
+		panoramaAPI.LobbyAPI.StopMatchmaking()
 	end
 end)
+
 client.set_event_callback("paint_ui", function ()
-	if uv0.LobbyAPI.BIsHost() then
+	if panoramaAPI.LobbyAPI.BIsHost() then
 		return
 	end
 
-	if uv0.LobbyAPI.IsSessionActive() == false then
+	if panoramaAPI.LobbyAPI.IsSessionActive() == false then
 		return
 	end
 
-	if uv0.LobbyAPI.GetMatchmakingStatusString() ~= "#SFUI_QMM_State_find_searching" then
+	if panoramaAPI.LobbyAPI.GetMatchmakingStatusString() ~= "#SFUI_QMM_State_find_searching" then
 		return
 	end
 
-	if uv0.LobbyAPI.GetSessionSettings().game.mapgroupname == nil then
+	local sessionSettings = panoramaAPI.LobbyAPI.GetSessionSettings()
+
+	if sessionSettings.game.mapgroupname == nil then
 		return
 	end
 
-	slot1 = {}
+	local blockedMaps = {}
 
-	for slot5, slot6 in pairs(ui.get(uv1)) do
-		if string.find(slot0.game.mapgroupname, uv2[slot6]) then
-			table.insert(slot1, slot6)
+	for _, mapName in pairs(ui.get(blacklistedMaps)) do
+		if string.find(sessionSettings.game.mapgroupname, mapGroupNamesBySelection[mapName]) then
+			table.insert(blockedMaps, mapName)
 		end
 	end
 
-	if #slot1 == 0 then
+	if #blockedMaps == 0 then
 		return
 	end
 
-	uv0.LobbyAPI.StopMatchmaking()
+	panoramaAPI.LobbyAPI.StopMatchmaking()
 
-	if ui.get(uv3) and client.unix_time() - uv4 > 2 then
-		uv4 = client.unix_time()
+	if ui.get(autoMessageWhenQueueIsCancelled) and client.unix_time() - lastAutoMessageTime > 2 then
+		lastAutoMessageTime = client.unix_time()
 
-		uv0.PartyListAPI.SessionCommand("Game::Chat", string.format("run all xuid %s chat %s", uv0.MyPersonaAPI.GetXuid(), string.format("[AUTO-MESSAGE] The queue was cancelled automatically due to a blacklisted map being selected."):gsub(" ", " ")))
-		uv0.PartyListAPI.SessionCommand("Game::Chat", string.format("run all xuid %s chat %s", uv0.MyPersonaAPI.GetXuid(), string.format("[AUTO-MESSAGE] Please remove: %s.", table.concat(slot1, ", ")):gsub(" ", " ")))
+		panoramaAPI.PartyListAPI.SessionCommand("Game::Chat", string.format("run all xuid %s chat %s", panoramaAPI.MyPersonaAPI.GetXuid(), string.format("[AUTO-MESSAGE] The queue was cancelled automatically due to a blacklisted map being selected."):gsub(" ", "\226\128\136")))
+		panoramaAPI.PartyListAPI.SessionCommand("Game::Chat", string.format("run all xuid %s chat %s", panoramaAPI.MyPersonaAPI.GetXuid(), string.format("[AUTO-MESSAGE] Please remove: %s.", table.concat(blockedMaps, ", ")):gsub(" ", "\226\128\136")))
 	end
 end)

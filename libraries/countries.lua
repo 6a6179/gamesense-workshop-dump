@@ -1,4 +1,4 @@
-slot0 = {
+local country_code_by_persona_level = {
 	[1353.0] = "CF",
 	[1365.0] = "BY",
 	[1361.0] = "MT",
@@ -194,7 +194,7 @@ slot0 = {
 	[1345.0] = "GW",
 	[1357.0] = "ZM"
 }
-slot1 = {
+local country_name_by_code = {
 	GM = "Gambia",
 	BI = "Burundi",
 	BW = "Botswana",
@@ -447,28 +447,34 @@ slot1 = {
 	MK = "Macedonia, the Former Yugoslav Republic of"
 }
 
-function slot2(slot0)
-	if entity.get_player_resource() == nil then
+local function get_persona_level(player_index)
+	local player_resource = entity.get_player_resource()
+
+	if player_resource == nil then
 		return
 	end
 
-	return entity.get_prop(slot1, "m_nPersonaDataPublicLevel", slot0)
+	return entity.get_prop(player_resource, "m_nPersonaDataPublicLevel", player_index)
 end
 
 return {
-	get_player_country = function (slot0)
-		if uv0(slot0) ~= nil then
-			return uv1[slot1]
+	get_player_country = function(player_index)
+		local persona_level = get_persona_level(player_index)
+
+		if persona_level ~= nil then
+			return country_code_by_persona_level[persona_level]
 		else
 			return "UNKNOWN"
 		end
 	end,
-	get_country_name = function (slot0)
-		return uv0[slot0] or "Unknown"
+	get_country_name = function(country_code)
+		return country_name_by_code[country_code] or "Unknown"
 	end,
-	server_has_plugin = function ()
-		for slot4, slot5 in ipairs(entity.get_players(false)) do
-			if uv0(slot5) >= 1200 then
+	server_has_plugin = function()
+		for _, player_index in ipairs(entity.get_players(false)) do
+			local persona_level = get_persona_level(player_index)
+
+			if persona_level ~= nil and persona_level >= 1200 then
 				return true
 			end
 		end

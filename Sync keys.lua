@@ -1,11 +1,11 @@
-slot0 = false
-slot1 = {
+local syncCallbacksEnabled = false
+local hotkeyModeLabels = {
 	[0] = "Always on",
 	"On hotkey",
 	"Toggle",
 	"Off hotkey"
 }
-slot2 = {
+local weaponTypeNames = {
 	"Global",
 	"G3SG1 / SCAR-20",
 	"SSG 08",
@@ -19,57 +19,57 @@ slot2 = {
 	"SMG",
 	"Machine gun"
 }
-slot3 = ui.new_checkbox("RAGE", "Other", "Sync keys")
-slot4 = ui.reference("RAGE", "Weapon type", "Weapon type")
+local syncKeysCheckbox = ui.new_checkbox("RAGE", "Other", "Sync keys")
+local weaponTypeReference = ui.reference("RAGE", "Weapon type", "Weapon type")
 
-function slot6()
-	uv0 = false
+local function disableSyncCallbacks()
+	syncCallbacksEnabled = false
 end
 
-function slot7()
-	uv0 = true
+local function enableSyncCallbacks()
+	syncCallbacksEnabled = true
 end
 
-client.set_event_callback("pre_config_load", slot6)
-client.set_event_callback("pre_config_save", slot6)
-client.set_event_callback("post_config_load", slot7)
-client.set_event_callback("post_config_save", slot7)
+client.set_event_callback("pre_config_load", disableSyncCallbacks)
+client.set_event_callback("pre_config_save", disableSyncCallbacks)
+client.set_event_callback("post_config_load", enableSyncCallbacks)
+client.set_event_callback("post_config_save", enableSyncCallbacks)
 
-slot12 = "RAGE"
-slot13 = "Aimbot"
+local rageSectionName = "RAGE"
+local aimbotTabName = "Aimbot"
 
-for slot12, slot13 in ipairs({
+for _, hotkeyReference in ipairs({
 	select(2, ui.reference("RAGE", "Aimbot", "Enabled")),
 	select(2, ui.reference("RAGE", "Aimbot", "Multi-point")),
 	select(2, ui.reference("RAGE", "Aimbot", "Minimum damage override")),
 	select(1, ui.reference("RAGE", "Aimbot", "Force safe point")),
 	select(1, ui.reference("RAGE", "Aimbot", "Force body aim")),
 	select(2, ui.reference("RAGE", "Aimbot", "Quick stop")),
-	select(2, ui.reference(slot12, slot13, "Double tap"))
+	select(2, ui.reference(rageSectionName, aimbotTabName, "Double tap"))
 }) do
-	if ui.type(slot13) == "hotkey" then
-		ui.set_callback(slot13, function (slot0)
-			if uv0 and ui.get(uv1) then
-				slot1, slot2, slot3 = ui.get(slot0)
+	if ui.type(hotkeyReference) == "hotkey" then
+		ui.set_callback(hotkeyReference, function (changedHotkey)
+			if syncCallbacksEnabled and ui.get(syncKeysCheckbox) then
+				local _, hotkeyModeIndex, hotkeyKey = ui.get(changedHotkey)
 
-				if slot3 == nil then
-					slot3 = 0
+				if hotkeyKey == nil then
+					hotkeyKey = 0
 				end
 
-				slot4 = ui.get(uv3)
+				local currentWeaponType = ui.get(weaponTypeReference)
 
-				for slot8, slot9 in ipairs(uv4) do
-					ui.set(uv3, slot9)
-					ui.set(slot0, uv2[slot2])
-					ui.set(slot0, nil, slot3)
+				for _, weaponType in ipairs(weaponTypeNames) do
+					ui.set(weaponTypeReference, weaponType)
+					ui.set(changedHotkey, hotkeyModeLabels[hotkeyModeIndex])
+					ui.set(changedHotkey, nil, hotkeyKey)
 				end
 
-				ui.set(uv3, slot4)
+				ui.set(weaponTypeReference, currentWeaponType)
 			end
 		end)
 	else
-		print("invalid hotkey: ", slot12, " ", slot13)
+		print("invalid hotkey: ", rageSectionName, " ", aimbotTabName)
 	end
 end
 
-slot0 = true
+syncCallbacksEnabled = true

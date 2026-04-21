@@ -1,78 +1,78 @@
-slot0 = panorama.open()
-slot1 = slot0.GameStateAPI
-slot2 = slot0.FriendsListAPI
-slot3 = {
-	"А",
-	"Б",
-	"В",
-	"Г",
-	"Д",
-	"Е",
-	"Ё",
-	"Ж",
-	"З",
-	"И",
-	"Й",
-	"К",
-	"Л",
-	"М",
-	"Н",
-	"О",
-	"П",
-	"Р",
-	"С",
-	"Т",
-	"У",
-	"Ф",
-	"Х",
-	"Ц",
-	"Ч",
-	"Ш",
-	"Щ",
-	"Ъ",
-	"Ы",
-	"Ь",
-	"Э",
-	"Ю",
-	"Я",
-	"а",
-	"б",
-	"в",
-	"г",
-	"д",
-	"е",
-	"ё",
-	"ж",
-	"з",
-	"и",
-	"й",
-	"к",
-	"л",
-	"м",
-	"н",
-	"о",
-	"п",
-	"р",
-	"с",
-	"т",
-	"ф",
-	"х",
-	"ц",
-	"ч",
-	"ш",
-	"щ",
-	"ъ",
-	"ы",
-	"ь",
-	"э",
-	"ю",
-	"я"
+local panoramaAPI = panorama.open()
+local gameStateAPI = panoramaAPI.GameStateAPI
+local friendsListAPI = panoramaAPI.FriendsListAPI
+local cyrillicCharacters = {
+	"Ð",
+	"Ð‘",
+	"Ð’",
+	"Ð“",
+	"Ð”",
+	"Ð•",
+	"Ð",
+	"Ð–",
+	"Ð—",
+	"Ð˜",
+	"Ð™",
+	"Ðš",
+	"Ð›",
+	"Ðœ",
+	"Ð",
+	"Ðž",
+	"ÐŸ",
+	"Ð ",
+	"Ð¡",
+	"Ð¢",
+	"Ð£",
+	"Ð¤",
+	"Ð¥",
+	"Ð¦",
+	"Ð§",
+	"Ð¨",
+	"Ð©",
+	"Ðª",
+	"Ð«",
+	"Ð¬",
+	"Ð­",
+	"Ð®",
+	"Ð¯",
+	"Ð°",
+	"Ð±",
+	"Ð²",
+	"Ð³",
+	"Ð´",
+	"Ðµ",
+	"Ñ‘",
+	"Ð¶",
+	"Ð·",
+	"Ð¸",
+	"Ð¹",
+	"Ðº",
+	"Ð»",
+	"Ð¼",
+	"Ð½",
+	"Ð¾",
+	"Ð¿",
+	"Ñ€",
+	"Ñ",
+	"Ñ‚",
+	"Ñ„",
+	"Ñ…",
+	"Ñ†",
+	"Ñ‡",
+	"Ñˆ",
+	"Ñ‰",
+	"ÑŠ",
+	"Ñ‹",
+	"ÑŒ",
+	"Ñ",
+	"ÑŽ",
+	"Ñ"
 }
-slot4 = ui.new_multiselect("lua", "a", "If cyrillic is found:", "Mute", "Report")
+local responseModes = ui.new_multiselect("lua", "a", "If cyrillic is found:", "Mute", "Report")
 
-function slot5(slot0, slot1)
-	for slot5 = 1, #slot0 do
-		if slot0[slot5] == slot1 then
+local function containsValue(values, needle)
+	for index = 1, #values do
+		if values[index] == needle then
 			return true
 		end
 	end
@@ -80,24 +80,24 @@ function slot5(slot0, slot1)
 	return false
 end
 
-function slot6(slot0, slot1)
-	if uv0(ui.get(uv1), "Report") then
-		uv2.SubmitPlayerReport(slot0, "textabuse, voiceabuse")
-		print("Enemy reported, " .. slot1 .. " " .. slot0)
-	elseif uv0(ui.get(uv1), "Mute") then
-		uv3.ToggleMute(slot0)
-		print("Enemy muted, " .. slot1 .. " " .. slot0)
+local function handleChattyEnemy(xuid, playerName)
+	if containsValue(ui.get(responseModes), "Report") then
+		gameStateAPI.SubmitPlayerReport(xuid, "textabuse, voiceabuse")
+		print("Enemy reported, " .. playerName .. " " .. xuid)
+	elseif containsValue(ui.get(responseModes), "Mute") then
+		friendsListAPI.ToggleMute(xuid)
+		print("Enemy muted, " .. playerName .. " " .. xuid)
 	end
 end
 
-client.set_event_callback("player_chat", function (slot0)
-	if slot0.entity == entity.get_local_player() then
+client.set_event_callback("player_chat", function (chatEvent)
+	if chatEvent.entity == entity.get_local_player() then
 		return
 	end
 
-	for slot4, slot5 in pairs(uv0) do
-		if string.find(slot0.text, uv0[slot4]) then
-			uv2(uv1.GetPlayerXuidStringFromEntIndex(slot0.entity), slot0.name)
+	for _, cyrillicCharacter in pairs(cyrillicCharacters) do
+		if string.find(chatEvent.text, cyrillicCharacter) then
+			handleChattyEnemy(gameStateAPI.GetPlayerXuidStringFromEntIndex(chatEvent.entity), chatEvent.name)
 		end
 	end
 end)

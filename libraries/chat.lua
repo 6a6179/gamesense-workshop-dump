@@ -1,11 +1,12 @@
-slot0 = require("ffi")
-slot1 = string.gsub
-slot2 = pairs
-slot3 = {
+local ffi = require("ffi")
+local gsub = string.gsub
+local pairs = pairs
+
+local color_codes = {
 	["{darkred}"] = "",
-	[" "] = "",
+	["â€©"] = "",
 	["{white}"] = "",
-	["‮"] = "",
+	["â€®"] = "",
 	["{orange}"] = "",
 	["%%"] = "%%%%",
 	["{lightred}"] = "",
@@ -21,64 +22,68 @@ slot3 = {
 	["{lightgreen}"] = "",
 	["{green}"] = "",
 	["{team}"] = "",
-	["  +"] = function (slot0)
-		return " " .. (" "):rep(slot0:len() - 1)
+	["  +"] = function(space_count)
+		return " " .. (" "):rep(space_count:len() - 1)
 	end
 }
 
-function slot4(slot0, slot1, slot2, slot3, slot4)
-	if slot3 ~= nil and slot3 ~= 0 then
-		slot6 = uv0.cast("uintptr_t", client.find_signature(slot0, slot1) or error("signature not found", 2)) + slot3
+local function resolve_signature(module_name, pattern, cast_type, offset, dereference_count)
+	local address = client.find_signature(module_name, pattern) or error("signature not found", 2)
+
+	if offset ~= nil and offset ~= 0 then
+		address = ffi.cast("uintptr_t", address) + offset
 	end
 
-	if slot4 ~= nil then
-		for slot10 = 1, slot4 do
-			if uv0.cast("uintptr_t*", slot6)[0] == nil then
+	if dereference_count ~= nil then
+		for _ = 1, dereference_count do
+			address = ffi.cast("uintptr_t*", address)[0]
+
+			if address == nil then
 				return error("signature not found", 2)
 			end
 		end
 	end
 
-	return uv0.cast(slot2, slot6)
+	return ffi.cast(cast_type, address)
 end
 
-function slot5(slot0, slot1)
-	for slot6 = 1, #slot0 do
-		slot2 = "" .. tostring(slot0[slot6]) .. (slot6 == #slot0 and "" or slot1)
+local function join_values(values, separator)
+	local result = ""
+
+	for index = 1, #values do
+		result = result .. tostring(values[index]) .. (index == #values and "" or separator)
 	end
 
-	return slot2
+	return result
 end
 
-slot8 = vtable_thunk(27, "void(__cdecl*)(void*, int, int, const char*, ...)")
+local chat_printf = vtable_thunk(27, "void(__cdecl*)(void*, int, int, const char*, ...)")
+local find_hud_element = resolve_signature("client.dll", "U\\x8b\\xecS\\x8b]\8VW\\x8b\\xf93\\xf69w(", "void***(__thiscall*)(void*, const char*)")
+local hud_manager = resolve_signature("client.dll", "\\xb9\\xcc\\xcc\\xcc̈F\t", "void*", 1, 1)
 
-if slot4("client.dll", "U\\x8b\\xecS\\x8b]VW\\x8b\\xf93\\xf69w(", "void***(__thiscall*)(void*, const char*)")(slot4("client.dll", "\\xb9\\xcc\\xcc\\xcc̈F\t", "void*", 1, 1), "CHudChat") == nil then
+if find_hud_element(hud_manager, "CHudChat") == nil then
 	error("CHudChat not found")
 end
 
-if slot7(slot6, "CCSGO_HudChat") == nil then
-	error("CCSGO_HudChat not found")
-end
+local chat_hud = find_hud_element(hud_manager, "CCSGO_HudChat") or error("CCSGO_HudChat not found")
 
-slot11 = slot0.cast("bool*", slot10) + 88
+local chat_open_state = ffi.cast("bool*", chat_hud) + 88
 
 return {
-	print = function (...)
-		return uv0(0, ...)
+	print = function(...)
+		return chat_printf(0, ...)
 	end,
-	print_player = function (slot0, ...)
-		for slot5, slot6 in uv1(uv2) do
-			slot1 = uv3(uv0(slot0 == 0 and {
-				" ",
-				...
-			} or {
-				...
-			}, ""), slot5, slot6)
+	print_player = function(player_index, ...)
+		local message_parts = player_index == 0 and { " ", ... } or { ... }
+		local message = join_values(message_parts, "")
+
+		for pattern, replacement in pairs(color_codes) do
+			message = gsub(message, pattern, replacement)
 		end
 
-		uv4(uv5, slot0, 0, slot1)
+		chat_printf(chat_hud, player_index, 0, message)
 	end,
-	is_open = function ()
-		return uv0[0]
+	is_open = function()
+		return chat_open_state[0]
 	end
 }

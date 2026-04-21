@@ -1,4 +1,4 @@
-slot0 = panorama.loadstring([[
+local panorama_bridge = panorama.loadstring([[
     let RegisteredEvents = {};
     let EventQueue = [];
 
@@ -34,55 +34,63 @@ slot0 = panorama.loadstring([[
         shutdown: _shutdown
     }
 ]])()
-slot2 = client.timestamp()
 
-client.set_event_callback("post_render", function ()
-	if client.timestamp() - uv0 > 10 then
-		for slot4 = 0, uv1.getQueue().length - 1 do
-			if slot0[slot4] then
-				slot6 = slot5[0]
-				slot8 = {
-					[slot12 + 1] = slot7[slot12]
-				}
-
-				for slot12 = 0, slot5[1].length - 1 do
-				end
-
-				uv2.callbacks[slot6] = uv2.callbacks[slot6] or {}
-
-				for slot12, slot13 in ipairs(uv2.callbacks[slot6]) do
-					slot13(unpack(slot8))
-				end
-			end
-		end
-
-		uv0 = client.timestamp()
-	end
-end)
-client.set_event_callback("shutdown", function ()
-	uv0.shutdown()
-end)
-
-return {
-	callbacks = {},
-	register_event = function (slot0, slot1)
-		uv0.register(slot0)
-
-		uv1.callbacks[slot0] = uv1.callbacks[slot0] or {}
-
-		table.insert(uv1.callbacks[slot0], slot1)
-
-		return slot1
-	end,
-	unregister_event = function (slot0, slot1)
-		uv0.unRegister(slot0)
-
-		uv1.callbacks[slot0] = uv1.callbacks[slot0] or {}
-
-		for slot5, slot6 in ipairs(uv1.callbacks[slot0]) do
-			if slot6 == slot1 then
-				table.remove(uv1.callbacks[slot0], slot5)
-			end
-		end
-	end
+local event_dispatcher = {
+    callbacks = {},
 }
+local last_poll_timestamp = client.timestamp()
+
+client.set_event_callback("post_render", function()
+    if client.timestamp() - last_poll_timestamp > 10 then
+        local queued_events = panorama_bridge.getQueue()
+
+        for event_index = 0, queued_events.length - 1 do
+            local queued_event = queued_events[event_index]
+
+            if queued_event then
+                local event_name = queued_event[0]
+                local event_arguments = {}
+
+                for argument_index = 0, queued_event[1].length - 1 do
+                    event_arguments[argument_index + 1] = queued_event[1][argument_index]
+                end
+
+                event_dispatcher.callbacks[event_name] = event_dispatcher.callbacks[event_name] or {}
+
+                for _, callback in ipairs(event_dispatcher.callbacks[event_name]) do
+                    callback(unpack(event_arguments))
+                end
+            end
+        end
+
+        last_poll_timestamp = client.timestamp()
+    end
+end)
+
+client.set_event_callback("shutdown", function()
+    panorama_bridge.shutdown()
+end)
+
+function event_dispatcher.register_event(event_name, callback)
+    panorama_bridge.register(event_name)
+
+    event_dispatcher.callbacks[event_name] = event_dispatcher.callbacks[event_name] or {}
+
+    table.insert(event_dispatcher.callbacks[event_name], callback)
+
+    return callback
+end
+
+function event_dispatcher.unregister_event(event_name, callback)
+    panorama_bridge.unRegister(event_name)
+
+    event_dispatcher.callbacks[event_name] = event_dispatcher.callbacks[event_name] or {}
+
+    for index, registered_callback in ipairs(event_dispatcher.callbacks[event_name]) do
+        if registered_callback == callback then
+            table.remove(event_dispatcher.callbacks[event_name], index)
+        end
+    end
+end
+
+return event_dispatcher

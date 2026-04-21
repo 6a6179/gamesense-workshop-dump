@@ -1,74 +1,79 @@
-slot0 = require("ffi")
-slot1 = require("gamesense/http")
-slot3 = panorama.open()
-slot4 = slot3.NewsAPI
-slot5 = slot3.GameStateAPI
-slot6 = 0
-slot7 = false
-slot8 = slot0.cast("uint32_t**", slot0.cast("char*", client.find_signature("engine.dll", "\\xff5\\xcc\\xcc\\xcc̍L$")) + 2)[0][0]
+local ffi = require("ffi")
+local http = require("gamesense/http")
+local panorama_api = panorama.open()
+local news_api = panorama_api.NewsAPI
+local game_state_api = panorama_api.GameStateAPI
+local current_client_version = ffi.cast("uint32_t**", ffi.cast("char*", client.find_signature("engine.dll", "\\xff5\\xcc\\xcc\\xccÌL$")) + 2)[0][0]
+local version_sync_in_progress = false
+local paint_ui_guard = 0
 
-function slot9()
-	if uv0 then
+local function request_version_check()
+	if version_sync_in_progress then
 		return
 	end
 
-	uv1.get("https://api.steampowered.com/ISteamApps/UpToDateCheck/v1/?appid=730&version=" .. uv2, function (slot0, slot1)
-		if not slot0 or slot1.status ~= 200 then
+	http.get("https://api.steampowered.com/ISteamApps/UpToDateCheck/v1/?appid=730&version=" .. current_client_version, function(success, response)
+		if not success or response.status ~= 200 then
 			return
 		end
 
-		if json.parse(slot1.body).response.required_version ~= nil then
-			uv0.cast("uint32_t**", uv0.cast("char*", client.find_signature("engine.dll", "\\xff5\\xcc\\xcc\\xcc̍L$")) + 2)[0][0] = slot2.response.required_version
+		local parsed_response = json.parse(response.body)
+		if parsed_response.response.required_version ~= nil then
+			current_client_version = parsed_response.response.required_version
+			ffi.cast("uint32_t**", ffi.cast("char*", client.find_signature("engine.dll", "\\xff5\\xcc\\xcc\\xccÌL$")) + 2)[0][0] = current_client_version
 		end
 	end)
 end
 
-function slot10()
-	slot1 = 1048576
-	slot2 = uv0.typeof("char[$]", slot1)()
+local function read_engine_version()
+	local buffer_size = 1048576
+	local buffer = ffi.typeof("char[$]", buffer_size)()
 
-	vtable_bind("vstdlib.dll", "VEngineCvar007", 35, "void(__thiscall*)(void*, int, char*, unsigned int)")(0, slot2, slot1)
+	vtable_bind("vstdlib.dll", "VEngineCvar007", 35, "void(__thiscall*)(void*, int, char*, unsigned int)")(0, buffer, buffer_size)
 
-	return uv0.string(slot2)
+	return ffi.string(buffer)
 end
 
-function slot11()
+local function sync_client_version()
 	client.exec("clear")
 
-	uv0 = true
-	slot0 = 0
+	version_sync_in_progress = true
 
-	client.delay_call(0.5, function ()
-		if not uv0():match("server version (.+)") then
+	client.delay_call(0.5, function()
+		local version_output = read_engine_version()
+		if not version_output:match("server version (.+)") then
 			return
 		end
 
-		uv1 = slot0:gsub("\n(.+)", "") + 0
-		uv2.cast("uint32_t**", uv2.cast("char*", client.find_signature("engine.dll", "\\xff5\\xcc\\xcc\\xcc̍L$")) + 2)[0][0] = uv1
+		current_client_version = version_output:gsub("\n(.+)", "") + 0
+		ffi.cast("uint32_t**", ffi.cast("char*", client.find_signature("engine.dll", "\\xff5\\xcc\\xcc\\xccÌL$")) + 2)[0][0] = current_client_version
 
 		client.exec("retry")
 	end)
-	client.delay_call(2, function ()
-		if uv0():match("Connected to (.+)") and uv1 ~= 0 then
-			uv2 = false
-			uv3 = uv1
 
-			uv4()
+	client.delay_call(2, function()
+		if read_engine_version():match("Connected to (.+)") and current_client_version ~= 0 then
+			version_sync_in_progress = false
+
+			request_version_check()
 		end
 	end)
 end
 
-client.set_event_callback("paint_ui", function ()
-	if (globals.mapname() ~= nil or uv0.IsConnectedOrConnectingToServer()) and not entity.get_local_player() then
-		if uv1 == 0 then
-			uv2()
+client.set_event_callback("paint_ui", function()
+	if (globals.mapname() ~= nil or game_state_api.IsConnectedOrConnectingToServer()) and not entity.get_local_player() then
+		if paint_ui_guard == 0 then
+			sync_client_version()
 
-			uv1 = 1
+			paint_ui_guard = 1
+		else
+			paint_ui_guard = 0
 		end
 	else
-		uv1 = 0
+		paint_ui_guard = 0
 	end
 end)
-client.set_event_callback("cs_win_panel_match", slot9)
-require("gamesense/panorama_events").register_event("CSGOShowMainMenu", slot9)
-slot9()
+
+client.set_event_callback("cs_win_panel_match", request_version_check)
+require("gamesense/panorama_events").register_event("CSGOShowMainMenu", request_version_check)
+request_version_check()

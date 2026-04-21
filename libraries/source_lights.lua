@@ -1,19 +1,29 @@
-slot0 = require("ffi")
-slot1 = slot0.cast
-slot2 = slot0.new
-slot3 = require("vector")
-slot6 = {
+local ffi = require("ffi")
+local ffi_cast = ffi.cast
+local ffi_new = ffi.new
+local vector = require("vector")
+
+local light_flags = {
 	DLIGHT_NO_WORLD_ILLUMINATION = 1,
 	DLIGHT_DISPLACEMENT_MASK = 12,
 	DLIGHT_SUBTRACT_DISPLACEMENT_ALPHA = 8,
 	DLIGHT_ADD_DISPLACEMENT_ALPHA = 4,
 	DLIGHT_NO_MODEL_ILLUMINATION = 2
 }
-slot7 = vtable_bind("engine.dll", "VEngineEffects001", 4, "void*(__thiscall*)(void*,int)")
-slot8 = vtable_bind("engine.dll", "VEngineEffects001", 5, "void*(__thiscall*)(void*,int)")
-slot9 = vtable_bind("engine.dll", "VEngineEffects001", 8, "void*(__thiscall*)(void*,int)")
-slot11 = {}
-slot12 = slot0.typeof("$ *", slot0.metatype(slot0.typeof([[
+
+local create_dlight = vtable_bind("engine.dll", "VEngineEffects001", 4, "void*(__thiscall*)(void*,int)")
+local create_elight = vtable_bind("engine.dll", "VEngineEffects001", 5, "void*(__thiscall*)(void*,int)")
+local get_elight_by_key = vtable_bind("engine.dll", "VEngineEffects001", 8, "void*(__thiscall*)(void*,int)")
+local light_methods = {}
+
+local color_t = ffi.typeof([[
+	struct {
+		unsigned char r,g,b;
+		signed char exponent;
+	}
+]])
+
+local light_t = ffi.typeof("$ *", ffi.metatype(ffi.typeof([[
 	struct {
 		int	 flags;
 		Vector  origin;
@@ -29,40 +39,35 @@ slot12 = slot0.typeof("$ *", slot0.metatype(slot0.typeof([[
 		float   m_InnerAngle;
 		float   m_OuterAngle;
 	}
-]], slot0.typeof([[
-	struct {
-		unsigned char r,g,b;
-		signed char exponent;
-	}
-]])), {
-	__index = slot11
+]]), {
+	__index = light_methods
 }))
 
-function slot11.set_color(slot0, slot1, slot2, slot3, slot4)
-	slot0.color.r = slot1
-	slot0.color.g = slot2
-	slot0.color.b = slot3
-	slot0.color.exponent = slot4
+function light_methods.set_color(light, red, green, blue, exponent)
+	light.color.r = red
+	light.color.g = green
+	light.color.b = blue
+	light.color.exponent = exponent
 end
 
-function slot11.set_flags(slot0, ...)
-	for slot5, slot6 in pairs({
-		...
-	}) do
-		slot1 = bit.bor(0, uv0[slot6] or slot6)
+function light_methods.set_flags(light, ...)
+	local flags = 0
+
+	for _, flag_name in pairs({ ... }) do
+		flags = bit.bor(flags, light_flags[flag_name] or flag_name)
 	end
 
-	slot0.flags = slot1
+	light.flags = flags
 end
 
 return {
-	create_dlight = function (slot0)
-		return uv1(uv2, uv0(slot0))
+	create_dlight = function(index)
+		return ffi_cast(light_t, create_dlight(index))
 	end,
-	create_elight = function (slot0)
-		return uv1(uv2, uv0(slot0))
+	create_elight = function(index)
+		return ffi_cast(light_t, create_elight(index))
 	end,
-	get_elight_by_key = function (slot0)
-		return uv1(uv2, uv0(slot0))
+	get_elight_by_key = function(key)
+		return ffi_cast(light_t, get_elight_by_key(key))
 	end
 }

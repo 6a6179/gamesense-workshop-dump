@@ -1,5 +1,5 @@
-slot0 = require("gamesense/csgo_weapons")
-slot1 = {
+local weapons = require("gamesense/csgo_weapons")
+local team_color_names = {
 	[0] = "Yellow",
 	"Purple",
 	"Green",
@@ -7,56 +7,58 @@ slot1 = {
 	"Orange",
 	[-1.0] = "Grey"
 }
-slot2 = 0.8
-slot4 = {}
-slot5 = {}
+local info_spam_delay = 0.8
+local damage_taken_by_enemy = {}
+local pending_chat_lines = {}
+local informant_columns
 
-function cleanup_last_place_name(slot0)
-	return (slot0 .. " "):gsub("%u[%l ]", function (slot0)
-		return " " .. slot0
+local function cleanup_last_place_name(place_name)
+	return (place_name .. " "):gsub("%u[%l ]", function(match)
+		return " " .. match
 	end):gsub("^%s+", ""):gsub("%s+$", "")
 end
 
-function is_warmup()
+local function is_warmup()
 	return entity.get_prop(entity.get_game_rules(), "m_bWarmupPeriod") == 1
 end
 
-function get_color(slot0)
-	return entity.get_prop(entity.get_player_resource(), "m_iCompTeammateColor", slot0)
+local function get_color(player_index)
+	return entity.get_prop(entity.get_player_resource(), "m_iCompTeammateColor", player_index)
 end
 
-function get_enemies_from_resource()
-	slot1 = entity.get_player_resource()
-	slot2 = {}
+local function get_enemies_from_resource()
+	local player_resource = entity.get_player_resource()
+	local enemies = {}
 
-	for slot6 = 0, globals.maxplayers() do
-		if entity.get_prop(slot1, "m_bAlive", slot6) == 1 and entity.get_prop(slot1, "m_iTeam", slot6) ~= entity.get_prop(entity.get_local_player(), "m_iTeamNum") then
-			table.insert(slot2, slot6)
+	for player_index = 0, globals.maxplayers() do
+		if entity.get_prop(player_resource, "m_bAlive", player_index) == 1 and entity.get_prop(player_resource, "m_iTeam", player_index) ~= entity.get_prop(entity.get_local_player(), "m_iTeamNum") then
+			table.insert(enemies, player_index)
 		end
 	end
 
-	return slot2
+	return enemies
 end
 
-function get_health(slot0)
-	return entity.get_prop(slot0, "m_iHealth")
+local function get_health(player_index)
+	return entity.get_prop(player_index, "m_iHealth")
 end
 
-function get_weapon_definition_index(slot0)
-	if entity.get_player_weapon(slot0) ~= nil then
-		return entity.get_prop(slot1, "m_iItemDefinitionIndex")
+local function get_weapon_definition_index(player_index)
+	local player_weapon = entity.get_player_weapon(player_index)
+	if player_weapon ~= nil then
+		return entity.get_prop(player_weapon, "m_iItemDefinitionIndex")
 	end
 
 	return nil
 end
 
-function get_last_location(slot0)
-	return entity.get_prop(slot0, "m_szLastPlaceName") or "Unknown"
+local function get_last_location(player_index)
+	return entity.get_prop(player_index, "m_szLastPlaceName") or "Unknown"
 end
 
-function is_in_table(slot0, slot1)
-	for slot5 = 1, #slot0 do
-		if slot0[slot5] == slot1 then
+local function is_in_table(values, target)
+	for index = 1, #values do
+		if values[index] == target then
 			return true
 		end
 	end
@@ -64,86 +66,89 @@ function is_in_table(slot0, slot1)
 	return false
 end
 
-function get_informant(slot0)
+local function get_informant(player_index)
 	return {
-		Persona = entity.get_player_name(slot0),
-		["Competitive color"] = uv0[get_color(slot0)],
-		["Damage dealt"] = uv1[slot0] ~= nil and "-" .. uv1[slot0] .. " HP" or nil,
-		Weapon = "Holding the " .. uv2[get_weapon_definition_index(slot0)].name,
-		["Current health"] = "Currently has " .. get_health(slot0) .. " HP",
-		["Last known location"] = "Last seen @ " .. cleanup_last_place_name(get_last_location(slot0))
+		Persona = entity.get_player_name(player_index),
+		["Competitive color"] = team_color_names[get_color(player_index)],
+		["Damage dealt"] = damage_taken_by_enemy[player_index] ~= nil and "-" .. damage_taken_by_enemy[player_index] .. " HP" or nil,
+		Weapon = "Holding the " .. weapons[get_weapon_definition_index(player_index)].name,
+		["Current health"] = "Currently has " .. get_health(player_index) .. " HP",
+		["Last known location"] = "Last seen @ " .. cleanup_last_place_name(get_last_location(player_index))
 	}
 end
 
-function push_to_log(slot0)
-	slot3 = {}
+local function push_to_log(player_index)
+	local columns = {}
 
-	for slot7, slot8 in pairs(get_informant(slot0)) do
-		if slot8 ~= nil and is_in_table(ui.get(uv0), slot7) then
-			table.insert(slot3, slot8)
+	for column_name, column_value in pairs(get_informant(player_index)) do
+		if column_value ~= nil and is_in_table(ui.get(informant_columns), column_name) then
+			table.insert(columns, column_value)
 		end
 	end
 
-	if #slot3 > 0 then
-		table.insert(uv1, table.concat(slot3, " | "))
+	if #columns > 0 then
+		table.insert(pending_chat_lines, table.concat(columns, " | "))
 	end
 end
 
-function on_player_death(slot0)
-	if is_warmup() or client.userid_to_entindex(slot0.userid) ~= entity.get_local_player() or slot0.attacker == slot0.userid or slot0.attacker == 0 then
+local function on_player_death(event)
+	if is_warmup() or client.userid_to_entindex(event.userid) ~= entity.get_local_player() or event.attacker == event.userid or event.attacker == 0 then
 		return
 	end
 
-	if client.userid_to_entindex(slot0.attacker) ~= nil and uv0[slot2] == nil then
-		push_to_log(slot2)
+	local attacker_index = client.userid_to_entindex(event.attacker)
+	if attacker_index ~= nil and damage_taken_by_enemy[attacker_index] == nil then
+		push_to_log(attacker_index)
 	end
 
-	for slot7, slot8 in pairs(uv0) do
-		if is_in_table(get_enemies_from_resource(), slot7) then
-			push_to_log(slot7)
+	for enemy_index, _ in pairs(damage_taken_by_enemy) do
+		if is_in_table(get_enemies_from_resource(), enemy_index) then
+			push_to_log(enemy_index)
 		end
 	end
 
-	for slot7 = 1, #uv1 do
-		client.delay_call(slot7 * uv2, client.exec, "say_team ", uv1[slot7])
+	for line_index = 1, #pending_chat_lines do
+		client.delay_call(line_index * info_spam_delay, client.exec, "say_team ", pending_chat_lines[line_index])
 	end
 end
 
-function on_player_spawn(slot0)
-	if client.userid_to_entindex(slot0.userid) ~= entity.get_local_player() then
+local function on_player_spawn(event)
+	if client.userid_to_entindex(event.userid) ~= entity.get_local_player() then
 		return
 	end
 
-	uv0 = {}
-	uv1 = {}
+	damage_taken_by_enemy = {}
+	pending_chat_lines = {}
 end
 
-function on_player_hurt(slot0)
-	if client.userid_to_entindex(slot0.attacker) ~= entity.get_local_player() then
+local function on_player_hurt(event)
+	if client.userid_to_entindex(event.attacker) ~= entity.get_local_player() then
 		return
 	end
 
-	if uv0[client.userid_to_entindex(slot0.userid)] == nil then
-		slot3 = 0
+	local victim_index = client.userid_to_entindex(event.userid)
+	if damage_taken_by_enemy[victim_index] == nil then
+		damage_taken_by_enemy[victim_index] = 0
 	end
 
-	uv0[slot2] = slot3 + slot0.dmg_health
+	damage_taken_by_enemy[victim_index] = damage_taken_by_enemy[victim_index] + event.dmg_health
 end
 
-function on_informant_ui_callback()
-	slot0 = #ui.get(uv0) > 0 and client.set_event_callback or client.unset_event_callback
+local function on_informant_ui_callback()
+	local set_or_clear_event_callback = #ui.get(informant_columns) > 0 and client.set_event_callback or client.unset_event_callback
 
-	slot0("player_death", on_player_death)
-	slot0("player_spawn", on_player_spawn)
-	slot0("player_hurt", on_player_hurt)
+	set_or_clear_event_callback("player_death", on_player_death)
+	set_or_clear_event_callback("player_spawn", on_player_spawn)
+	set_or_clear_event_callback("player_hurt", on_player_hurt)
 end
 
-ui.set_callback(ui.new_multiselect("VISUALS", "Other ESP", "Informant", {
+informant_columns = ui.new_multiselect("VISUALS", "Other ESP", "Informant", {
 	"Persona",
 	"Competitive color",
 	"Damage dealt",
 	"Weapon",
 	"Current health",
 	"Last known location"
-}), on_informant_ui_callback)
+})
+ui.set_callback(informant_columns, on_informant_ui_callback)
 on_informant_ui_callback()

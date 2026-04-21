@@ -1,132 +1,134 @@
-slot1 = require("gamesense/steamworks")
-slot2 = require("ffi").typeof("char[?]")
-slot4 = vtable_thunk(32, "int(__thiscall*)(void*, char*, uint32_t, const char*, bool)")
+local ffi = require("ffi")
+local steamworks = require("gamesense/steamworks")
+local wide_char_buffer = ffi.typeof("char[?]")
+local steam_utils_message_filter = vtable_thunk(32, "int(__thiscall*)(void*, char*, uint32_t, const char*, bool)")
+local steam_utils = vtable_bind("steamclient.dll", "SteamClient017", 9, "uintptr_t*(__thiscall*)(void*, int, const char*)")(1, "SteamUtils009")
 
-if vtable_bind("steamclient.dll", "SteamClient017", 9, "uintptr_t*(__thiscall*)(void*, int, const char*)")(1, "SteamUtils009") == nil then
+if steam_utils == nil then
 	return error("failed to get ISteamUtils")
 end
 
-function slot6(slot0, slot1)
-	slot2 = slot0:len() + 1
-	slot3 = uv0(slot2)
+local function convert_message(text, preserve_control_characters)
+	local length = #text + 1
+	local buffer = wide_char_buffer(length)
 
-	return uv3.string(slot3, slot2 - 1), uv1(uv2, slot3, slot2, slot0, slot1)
+	return ffi.string(buffer, length - 1), steam_utils_message_filter(steam_utils, buffer, length, text, preserve_control_characters)
 end
 
-slot7 = ui.new_checkbox("LUA", "B", "Bypass Chat Filter")
-slot8 = {
-	B = "Ḃ",
-	h = "ḥ",
-	i = "į",
-	P = "Ṗ",
-	b = "ḃ",
-	p = "ṗ",
-	A = "Ȧ",
-	O = "Ȯ",
-	q = "ɋ",
-	o = "ȯ",
-	Q = "Ɋ",
-	N = "Ṇ",
-	r = "ṛ",
-	R = "Ṛ",
-	M = "Ṃ",
-	s = "ṣ",
-	m = "ṃ",
-	S = "Ṣ",
-	L = "Ḷ",
-	t = "ṭ",
-	l = "ḷ",
-	T = "Ṭ",
-	z = "ẓ",
-	Z = "Ẓ",
-	n = "ṇ",
-	Y = "Ỵ",
-	y = "ỵ",
-	X = "Ẋ",
-	G = "Ġ",
-	x = "ẋ",
-	g = "ġ",
-	W = "Ẉ",
-	F = "Ḟ",
-	w = "ẉ",
-	f = "ḟ",
-	V = "Ṿ",
-	E = "Ẹ",
-	v = "ṿ",
-	e = "ẹ",
-	U = "Ụ",
-	D = "Ḍ",
-	u = "ụ",
-	d = "ḍ",
-	K = "Ḳ",
-	C = "Ċ",
-	k = "ḳ",
-	c = "ċ",
-	J = "Ĵ",
-	j = "ĵ",
-	I = "Į",
-	a = "ȧ",
-	H = "Ḥ"
+local bypass_chat_filter = ui.new_checkbox("LUA", "B", "Bypass Chat Filter")
+local replacement_map = {
+	B = "á¸‚",
+	h = "á¸¥",
+	i = "Ä¯",
+	P = "á¹–",
+	b = "á¸ƒ",
+	p = "á¹—",
+	A = "È¦",
+	O = "È®",
+	q = "É‹",
+	o = "È¯",
+	Q = "ÉŠ",
+	N = "á¹†",
+	r = "á¹›",
+	R = "á¹š",
+	M = "á¹‚",
+	s = "á¹£",
+	m = "á¹ƒ",
+	S = "á¹¢",
+	L = "á¸¶",
+	t = "á¹­",
+	l = "á¸·",
+	T = "á¹¬",
+	z = "áº“",
+	Z = "áº’",
+	n = "á¹‡",
+	Y = "á»´",
+	y = "á»µ",
+	X = "áºŠ",
+	G = "Ä ",
+	x = "áº‹",
+	g = "Ä¡",
+	W = "áºˆ",
+	F = "á¸ž",
+	w = "áº‰",
+	f = "á¸Ÿ",
+	V = "á¹¾",
+	E = "áº¸",
+	v = "á¹¿",
+	e = "áº¹",
+	U = "á»¤",
+	D = "á¸Œ",
+	u = "á»¥",
+	d = "á¸",
+	K = "á¸²",
+	C = "ÄŠ",
+	k = "á¸³",
+	c = "Ä‹",
+	J = "Ä´",
+	j = "Äµ",
+	I = "Ä®",
+	a = "È§",
+	H = "á¸¤"
 }
-slot9 = "‌​"
-slot10 = " "
-slot11 = {
-	MyPersonaAPI = panorama.open().MyPersonaAPI,
-	PartyListAPI = panorama.open().PartyListAPI
-}
+local zero_width_joiner = "â€Œâ€‹"
+local non_breaking_space = "Â "
+local panorama_api = panorama.open()
+local my_persona_api = panorama_api.MyPersonaAPI
+local party_list_api = panorama_api.PartyListAPI
 
-function slot12(slot0)
-	slot1 = {}
+local function send_party_chat(message)
+	local normalized_words = {}
 
-	for slot5 in slot0:gmatch("[^%s]+") do
-		slot6, slot7 = uv0(slot5, false)
+	for word in message:gmatch("[^%s]+") do
+		local _, converted_length = convert_message(word, false)
 
-		if slot7 > 0 and slot5:len() > 1 then
-			slot5 = slot5:sub(1, 2) .. (uv1[slot5:sub(3, 3)] or slot8) .. slot5:sub(4, -1)
+		if converted_length > 0 and #word > 1 then
+			word = word:sub(1, 2) .. (replacement_map[word:sub(3, 3)] or zero_width_joiner) .. word:sub(4, -1)
 		end
 
-		table.insert(slot1, slot5)
+		table.insert(normalized_words, word)
 	end
 
-	uv2.PartyListAPI.SessionCommand("Game::Chat", string.format("run all xuid %s chat %s", uv2.MyPersonaAPI.GetXuid(), table.concat(slot1, uv3)))
+	party_list_api.SessionCommand("Game::Chat", string.format("run all xuid %s chat %s", my_persona_api.GetXuid(), table.concat(normalized_words, non_breaking_space)))
 end
 
-client.set_event_callback("console_input", function (slot0)
-	if slot0:sub(1, #"party_say") == "party_say" then
-		uv0(slot0:sub(#"party_say" + 2, -1))
+client.set_event_callback("console_input", function(input_text)
+	if input_text:sub(1, #"party_say") == "party_say" then
+		send_party_chat(input_text:sub(#"party_say" + 2, -1))
 
 		return true
 	end
 end)
-client.set_event_callback("string_cmd", function (slot0)
-	if not ui.get(uv0) then
+
+client.set_event_callback("string_cmd", function(command)
+	if not ui.get(bypass_chat_filter) then
 		return
 	end
 
-	slot1, slot2 = slot0.text:match("^(.-) (.+)$")
+	local command_name, chat_message = command.text:match("^(.-) (.+)$")
 
-	if (slot1 == "say" or slot1 == "say_team") and slot2 ~= nil then
-		slot3 = false
-		slot4 = {}
+	if (command_name == "say" or command_name == "say_team") and chat_message ~= nil then
+		local should_rewrite = false
+		local rewritten_words = {}
 
-		if slot2:find("\"", 1) and slot2:find("\"", -1) then
-			slot2 = slot2:sub(2, -2)
+		if chat_message:find("\"", 1) and chat_message:find("\"", -1) then
+			chat_message = chat_message:sub(2, -2)
 		end
 
-		for slot8 in slot2:gmatch("[^%s]+") do
-			slot9, slot10 = uv1(slot8, false)
+		for word in chat_message:gmatch("[^%s]+") do
+			local _, converted_length = convert_message(word, false)
 
-			if slot10 > 0 and slot8:len() > 1 then
-				slot3 = true
-				slot11 = slot8:len() > 2 and 3 or 2
-				slot8 = slot8:sub(1, slot11 - 1) .. (uv2[slot8:sub(slot11, slot11)] or slot12) .. slot8:sub(slot11 + 1, -1)
+			if converted_length > 0 and #word > 1 then
+				should_rewrite = true
+				local replacement_index = #word > 2 and 3 or 2
+				word = word:sub(1, replacement_index - 1) .. (replacement_map[word:sub(replacement_index, replacement_index)] or zero_width_joiner) .. word:sub(replacement_index + 1, -1)
 			end
 
-			table.insert(slot4, slot8)
+			table.insert(rewritten_words, word)
 		end
 
-		if slot3 then
-			slot0.text = slot1 .. " " .. table.concat(slot4, " ")
+		if should_rewrite then
+			command.text = command_name .. " " .. table.concat(rewritten_words, " ")
 		end
 	end
 end)

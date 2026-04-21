@@ -1,5 +1,5 @@
-slot0 = 15
-slot2 = {
+local flashSpeedMultiplier = 15
+local radioUrls = {
 	"http://air.radiorecord.ru:805/dc_320",
 	"http://uk7.internet-radio.com:8000/stream",
 	"https://www.internet-radio.com/player/?mount=http://uk1.internet-radio.com:8200/live.m3u&title=Phever%20Media%20Live%20Audio%20Stream&website=www.phever.ie",
@@ -10,13 +10,13 @@ slot2 = {
 	"https://icecast.z8r.de/radiosven-lofi-ogg",
 	"http://playerservices.streamtheworld.com/api/livestream-redirect/TLPSTR19.mp3"
 }
-slot3 = ui.new_combobox("LUA", "a", "Choose active radio indicator", {
+local indicatorModeCombo = ui.new_combobox("LUA", "a", "Choose active radio indicator", {
 	"No indicator",
 	"Static",
 	"Breathing",
 	"Flashing"
 })
-slot4 = ui.new_combobox("LUA", "a", "Choose radio", {
+local radioCombo = ui.new_combobox("LUA", "a", "Choose radio", {
 	"Hits",
 	"House",
 	"Techno",
@@ -29,12 +29,12 @@ slot4 = ui.new_combobox("LUA", "a", "Choose radio", {
 	"Ibiza"
 })
 
-function OpenMusic()
-	slot0 = nil
+local function openSelectedRadio()
+	local selectedRadioIndex = nil
 
-	for slot4, slot5 in next, uv0, nil do
-		if slot5 == ui.get(uv1) then
-			slot0 = slot4
+	for radioIndex, radioName in next, radioUrls, nil do
+		if radioName == ui.get(radioCombo) then
+			selectedRadioIndex = radioIndex
 		end
 	end
 
@@ -44,41 +44,42 @@ function OpenMusic()
 			SteamOverlayAPI.OpenURL(url)
 		  }
 		}
-		]])().open_url(uv2[slot0])
+		]])().open_url(radioUrls[selectedRadioIndex])
 end
 
-function slot5(slot0, slot1)
-	slot0 = slot0 * uv0
+local function normalizeFlashValue(value, limit)
+	value = value * flashSpeedMultiplier
 
-	while slot1 < slot0 do
-		slot0 = slot1 - slot0
+	while limit < value do
+		value = limit - value
 	end
 
-	return slot0
+	return value
 end
 
-function OnDraw()
-	slot1 = ui.get(uv1)
+local function onDraw()
+	local radioName = ui.get(radioCombo)
+	local indicatorMode = ui.get(indicatorModeCombo)
 
-	if ui.get(uv0) == "No indicator" then
-		-- Nothing
-	elseif slot0 == "Static" then
-		renderer.indicator(0, 255, 255, 255, slot1)
-	elseif slot0 == "Breathing" then
-		B = math.floor(math.sin((globals.curtime() + 0.7) * 4 + 4) * 127 + 128)
-		G = 255
-		R = math.floor(math.sin((globals.curtime() + 0.7) * 4 + 4) * 127 + 128)
+	if indicatorMode == "No indicator" then
+		return
+	elseif indicatorMode == "Static" then
+		renderer.indicator(0, 255, 255, 255, radioName)
+	elseif indicatorMode == "Breathing" then
+		local red = math.floor(math.sin((globals.curtime() + 0.7) * 4 + 4) * 127 + 128)
+		local green = 255
+		local blue = math.floor(math.sin((globals.curtime() + 0.7) * 4 + 4) * 127 + 128)
 
-		renderer.indicator(0, R, G, B, slot1)
-	elseif slot0 == "Flashing" then
-		slot2 = 510 / uv2
-		B = uv3(globals.tickcount() % slot2, 255)
-		G = 255
-		R = uv3(globals.tickcount() % slot2, 255)
+		renderer.indicator(0, red, green, blue, radioName)
+	elseif indicatorMode == "Flashing" then
+		local flashPeriod = 510 / flashSpeedMultiplier
+		local red = normalizeFlashValue(globals.tickcount() % flashPeriod, 255)
+		local green = 255
+		local blue = normalizeFlashValue(globals.tickcount() % flashPeriod, 255)
 
-		renderer.indicator(0, R, G, B, slot1)
+		renderer.indicator(0, red, green, blue, radioName)
 	end
 end
 
-client.set_event_callback("paint", OnDraw)
-ui.new_button("LUA", "a", "Start Radio", OpenMusic)
+client.set_event_callback("paint", onDraw)
+ui.new_button("LUA", "a", "Start Radio", openSelectedRadio)

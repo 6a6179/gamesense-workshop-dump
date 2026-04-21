@@ -1,30 +1,35 @@
-slot0 = require("ffi")
-slot1 = string.len
-slot2 = tostring
-slot3 = slot0.string
-slot4 = {
-	get = function ()
-		if uv0() > 0 then
-			slot1 = uv1(slot0)
+local ffi = require("ffi")
+local strlen = string.len
+local tostring = tostring
+local ffi_string = ffi.string
 
-			uv2(0, slot1, slot0)
+local get_clipboard_text_length = vtable_bind("vgui2.dll", "VGUI_System010", 7, "int(__thiscall*)(void*)")
+local set_clipboard_text = vtable_bind("vgui2.dll", "VGUI_System010", 9, "void(__thiscall*)(void*, const char*, int)")
+local get_clipboard_text = vtable_bind("vgui2.dll", "VGUI_System010", 11, "int(__thiscall*)(void*, int, const char*, int)")
+local char_buffer_t = ffi.typeof("char[?]")
 
-			return uv3(slot1, slot0 - 1)
-		end
+local clipboard = {}
+
+function clipboard.get()
+	local clipboard_length = get_clipboard_text_length()
+
+	if clipboard_length > 0 then
+		local buffer = char_buffer_t(clipboard_length)
+
+		get_clipboard_text(0, buffer, clipboard_length)
+
+		return ffi_string(buffer, clipboard_length - 1)
 	end
-}
-slot5 = vtable_bind("vgui2.dll", "VGUI_System010", 7, "int(__thiscall*)(void*)")
-slot6 = vtable_bind("vgui2.dll", "VGUI_System010", 9, "void(__thiscall*)(void*, const char*, int)")
-slot7 = vtable_bind("vgui2.dll", "VGUI_System010", 11, "int(__thiscall*)(void*, int, const char*, int)")
-slot8 = slot0.typeof("char[?]")
-slot4.paste = slot4.get
-
-function slot4.set(slot0)
-	slot0 = uv0(slot0)
-
-	uv1(slot0, uv2(slot0))
 end
 
-slot4.copy = slot4.set
+clipboard.paste = clipboard.get
 
-return slot4
+function clipboard.set(text)
+	text = tostring(text)
+
+	set_clipboard_text(text, strlen(text))
+end
+
+clipboard.copy = clipboard.set
+
+return clipboard
