@@ -1,143 +1,390 @@
-slot0 = require("ffi")
-slot1 = require("gamesense/steamworks")
-slot2 = require("gamesense/http")
+local ffi = require("ffi")
+local steamworks = require("gamesense/steamworks")
+local http = require("gamesense/http")
 
-if type(database.read("server_picker")) ~= "table" then
-	slot3 = {}
+local saved_settings = database.read("server_picker")
+if type(saved_settings) ~= "table" then
+	saved_settings = {}
 end
 
-if slot3.active_datacenter ~= nil then
-	slot3.active_datacenters = slot3.active_datacenters or {
-		slot3.active_datacenter
+if saved_settings.active_datacenter ~= nil then
+	saved_settings.active_datacenters = saved_settings.active_datacenters or {
+		saved_settings.active_datacenter
 	}
-	slot3.active_datacenter = nil
+	saved_settings.active_datacenter = nil
 end
 
-if type(slot3.active_datacenters) ~= "table" then
-	slot3.active_datacenters = {}
+if type(saved_settings.active_datacenters) ~= "table" then
+	saved_settings.active_datacenters = {}
 end
 
-slot4 = slot1.ISteamNetworkingUtils
+local steam_networking_utils = steamworks.ISteamNetworkingUtils()
+local datacenters_by_id = {}
+local datacenter_order = {}
+local panorama_bridge
+local panorama_layout
+local hide_from_obs_control = ui.reference("MISC", "Settings", "Hide from OBS")
+local last_datacenter_refresh = 0
+local runtime_started = false
+local sdr_module = package.loaded["gamesense/sdr"]
 
-function slot5(slot0)
-	slot1 = uv0.cast("const char*", uv0.new("unsigned int[1]", slot0))
-
-	return string.char(slot1[2]) .. string.char(slot1[1]) .. string.char(slot1[0]) .. (slot1[3] == 0 and "" or string.char(slot1[3]))
+if sdr_module == nil then
+	sdr_module = {}
 end
 
-function slot6(slot0)
-	slot2 = uv0.cast("char*", uv0.cast("unsigned int*", uv0.new("unsigned int[1]", 0)))
-	slot2[2] = string.byte(slot0, 1)
-	slot2[1] = string.byte(slot0, 2)
-	slot2[0] = string.byte(slot0, 3)
-	slot2[3] = string.byte(slot0, 4) or 0
-
-	return slot1[0]
+local function clear_table(values)
+	for key in pairs(values) do
+		values[key] = nil
+	end
 end
 
-function slot7()
-	slot0 = uv0.GetPOPCount()
-	slot1 = uv1.new("unsigned int[?]", slot0)
+local function pop_id_to_string(pop_id)
+	local bytes = ffi.cast("const char*", ffi.new("unsigned int[1]", pop_id))
 
-	uv0.GetPOPList(slot1, slot0)
-
-	return slot0, slot1
+	return string.char(bytes[2]) .. string.char(bytes[1]) .. string.char(bytes[0]) .. (bytes[3] == 0 and "" or string.char(bytes[3]))
 end
 
-slot8 = client.error_log
-slot9 = slot0.new([[
-	struct {
-		void* vtbl;
-		void* vtbl_storage[22];
-	}
-]])
-slot9.vtbl = slot9.vtbl_storage
-slot10 = slot0.cast("void***", slot0.cast("char*", client.find_signature("client.dll", "\\xa1\\xcc\\xcc\\xcc̅\\xc0uj\\x8bT$ 3\\xf63")) + 1)[0]
-slot11 = nil
+local function string_to_pop_id(pop_code)
+	local bytes = ffi.cast("char*", ffi.cast("unsigned int*", ffi.new("unsigned int[1]", 0)))
+	bytes[2] = string.byte(pop_code, 1)
+	bytes[1] = string.byte(pop_code, 2)
+	bytes[0] = string.byte(pop_code, 3)
+	bytes[3] = string.byte(pop_code, 4) or 0
 
-function slot12()
-	if uv0 ~= nil then
-		if uv0[0] == uv1 then
-			uv0[0] = uv2.thisptr
+	return bytes[0]
+end
+
+local function get_pop_list()
+	local pop_count = steam_networking_utils.GetPOPCount()
+	local pop_list = ffi.new("unsigned int[?]", pop_count)
+
+	steam_networking_utils.GetPOPList(pop_list, pop_count)
+
+	return pop_count, pop_list
+end
+
+local function geodesic_distance_km(first_datacenter_id, second_datacenter_id)
+	local first_datacenter = datacenters_by_id[first_datacenter_id]
+	local second_datacenter = datacenters_by_id[second_datacenter_id]
+
+	if first_datacenter == nil or second_datacenter == nil or first_datacenter.geo == nil or second_datacenter.geo == nil then
+		return 999
+	end
+
+	local first_latitude, first_longitude = unpack(first_datacenter.geo)
+	local second_latitude, second_longitude = unpack(second_datacenter.geo)
+	local half_latitude = math.sin(math.rad(second_latitude - first_latitude) / 2)
+	local half_longitude = math.sin(math.rad(second_longitude - first_longitude) / 2)
+	local haversine = half_latitude * half_latitude + math.cos(math.rad(first_latitude)) * math.cos(math.rad(second_latitude)) * half_longitude * half_longitude
+
+	return 125 * 2 * math.atan2(math.sqrt(haversine), math.sqrt(1 - haversine))
+end
+
+local function refresh_datacenter_ping_data()
+	local pop_count, pop_list = get_pop_list()
+
+	for index = 1, pop_count do
+		local pop_id = pop_list[index - 1]
+		local datacenter_id = pop_id_to_string(pop_id)
+		local datacenter = datacenters_by_id[datacenter_id]
+
+		if datacenter ~= nil then
+			local direct_ping = steam_networking_utils.GetDirectPingToPOP(pop_id)
+			if direct_ping > 0 and direct_ping < 800 then
+				datacenter.direct = direct_ping
+			end
+
+			local indirect_ping, relay_pop_id = steam_networking_utils.GetPingToDataCenter(pop_id)
+			if indirect_ping > 0 and relay_pop_id ~= nil and indirect_ping < 800 then
+				datacenter.relay = pop_id_to_string(relay_pop_id)
+				datacenter.indirect = indirect_ping
+			end
+		end
+	end
+end
+
+local function rebuild_search_ping_cap()
+	local active_datacenters = saved_settings.active_datacenters or {}
+
+	if #active_datacenters == 0 then
+		return
+	end
+
+	local best_datacenter_id = nil
+	local lowest_direct_ping = math.huge
+
+	for _, datacenter_id in ipairs(active_datacenters) do
+		local datacenter = datacenters_by_id[datacenter_id]
+
+		if datacenter ~= nil and datacenter.direct ~= nil and datacenter.direct > 0 and datacenter.direct < lowest_direct_ping then
+			lowest_direct_ping = datacenter.direct
+			best_datacenter_id = datacenter_id
+		end
+	end
+
+	if best_datacenter_id == nil then
+		for datacenter_id, datacenter in pairs(datacenters_by_id) do
+			if datacenter.direct ~= nil and datacenter.direct > 0 and datacenter.direct < lowest_direct_ping then
+				lowest_direct_ping = datacenter.direct
+				best_datacenter_id = datacenter_id
+			end
+		end
+	end
+
+	if lowest_direct_ping == math.huge then
+		lowest_direct_ping = 50
+	end
+
+	if best_datacenter_id == nil then
+		best_datacenter_id = active_datacenters[1]
+	end
+
+	local estimated_ping_cap = lowest_direct_ping
+
+	if best_datacenter_id ~= nil then
+		for _, datacenter_id in ipairs(active_datacenters) do
+			if datacenter_id ~= best_datacenter_id and datacenters_by_id[datacenter_id] ~= nil then
+				estimated_ping_cap = math.min(900, math.floor(estimated_ping_cap + client.random_int(25, 45) + geodesic_distance_km(datacenter_id, best_datacenter_id))) + client.random_int(30, 55)
+				break
+			end
+		end
+	end
+
+	estimated_ping_cap = estimated_ping_cap + 20
+	cvar.mm_dedicated_search_maxping:set_raw_float(estimated_ping_cap)
+	cvar.mm_dedicated_search_maxping:set_raw_int(estimated_ping_cap)
+end
+
+local function sync_active_datacenters()
+	if panorama_bridge ~= nil then
+		panorama_bridge.set_active_datacenters(saved_settings.active_datacenters or {})
+	end
+end
+
+local function validate_active_datacenters()
+	for _, datacenter_id in pairs(saved_settings.active_datacenters) do
+		if datacenters_by_id[datacenter_id] == nil then
+			saved_settings.active_datacenters = {}
+			break
+		end
+	end
+end
+
+local function build_datacenter_order()
+	datacenter_order = {}
+
+	for datacenter_id, datacenter in pairs(datacenters_by_id) do
+		table.insert(datacenter_order, {
+			datacenter.name,
+			datacenter_id
+		})
+	end
+
+	table.sort(datacenter_order, function(left, right)
+		return left[1] < right[1]
+	end)
+
+	for index, entry in ipairs(datacenter_order) do
+		datacenter_order[index] = entry[2]
+	end
+end
+
+local function refresh_panorama_dropdown()
+	validate_active_datacenters()
+	build_datacenter_order()
+
+	if panorama_bridge == nil then
+		return
+	end
+
+	panorama_bridge.set_datacenters(datacenters_by_id, nil, datacenter_order)
+	panorama_bridge.set_layouts(panorama_layout)
+	panorama_bridge.set_active_datacenters(saved_settings.active_datacenters or {})
+
+	local function try_create_panorama()
+		if panorama_bridge.create() then
+			if not runtime_started then
+				runtime_started = true
+				sync_active_datacenters()
+
+				local function update_visibility()
+					if panorama_bridge ~= nil then
+						panorama_bridge.set_visible(not ui.get(hide_from_obs_control))
+					end
+				end
+
+				ui.set_callback(hide_from_obs_control, update_visibility)
+				update_visibility()
+
+				client.set_event_callback("paint_ui", function()
+					update_visibility()
+
+					if globals.mapname() ~= nil then
+						return
+					end
+
+					local now = globals.realtime()
+					local _, relay_status = steam_networking_utils.GetRelayNetworkStatus()
+
+					if now - last_datacenter_refresh > 0.2 then
+						refresh_datacenter_ping_data()
+						panorama_bridge.set_datacenters(datacenters_by_id, relay_status.m_bPingMeasurementInProgress == 1, datacenter_order)
+						last_datacenter_refresh = now
+					end
+
+					if #saved_settings.active_datacenters > 0 then
+						rebuild_search_ping_cap()
+					end
+				end)
+
+				client.set_event_callback("shutdown", function()
+					if panorama_bridge ~= nil then
+						panorama_bridge.destroy()
+					end
+
+					database.write("server_picker", saved_settings)
+				end)
+			end
+		else
+			client.delay_call(0.2, try_create_panorama)
+		end
+	end
+
+	try_create_panorama()
+end
+
+local function stop_search_with_reason(reason)
+	local is_searching = PartyListAPI.GetPartySessionSetting("game/mmqueue") == "searching"
+
+	if is_searching then
+		LobbyAPI.StopMatchmaking()
+	end
+
+	if reason ~= nil then
+		local popup_message = "Failed to force region!\n\n" .. tostring(reason) .. "\n\n" .. (is_searching and "The search has been stopped.\n" or "") .. "If this error persists, please disable the lua script."
+
+		UiToolkitAPI.ShowGenericPopupOk(
+			"MM Region Selector Error",
+			popup_message,
+			"",
+			function()
+				UiToolkitAPI.CloseAllVisiblePopups()
+			end
+		)
+	end
+end
+
+local function handle_config_response(request_succeeded, response)
+	if not request_succeeded or response.status ~= 200 then
+		return
+	end
+
+	local config = json.parse(response.body)
+	if config.success ~= 1 then
+		return
+	end
+
+	clear_table(datacenters_by_id)
+
+	local pop_count, pop_list = get_pop_list()
+
+	for index = 1, pop_count do
+		local pop_code = pop_id_to_string(pop_list[index - 1])
+		local config_pop = config.pops[pop_code]
+		local datacenter = {
+			i = index,
+			id = pop_code,
+			name = config_pop ~= nil and (config_pop.server_region or config_pop.desc or pop_code:upper()) or pop_code:upper()
+		}
+
+		if config_pop ~= nil then
+			if datacenter.name:find("_") then
+				datacenter.name = config_pop.desc or datacenter.name
+			end
+
+			if config_pop.country ~= nil then
+				datacenter.country_code = config_pop.country.short_name
+			end
+
+			datacenter.server_region = config_pop.server_region
+			datacenter.geo = config_pop.geo
+			datacenter.time_offset = config_pop.time_offset
+			datacenter.groups = config_pop.groups
 		end
 
-		uv0 = nil
+		datacenters_by_id[pop_code] = datacenter
+	end
+
+	refresh_datacenter_ping_data()
+	rebuild_search_ping_cap()
+	refresh_panorama_dropdown()
+end
+
+local function request_config_on_first_paint()
+	if globals.mapname() == nil then
+		xpcall(function()
+			http.get("https://sapphyr.us/sdr-data/v1/config", handle_config_response)
+		end, client.error_log)
+		client.unset_event_callback("paint_ui", request_config_on_first_paint)
 	end
 end
 
-function slot13()
-	uv1()
+local function get_all_datacenters()
+	local datacenter_ids = {}
 
-	if uv0[0] ~= nil and uv2.cast("void**", slot0) + 26 ~= nil and slot1[0] ~= nil then
-		if slot1[0] ~= uv3 and slot2 ~= uv4.thisptr and slot2 ~= nil then
-			uv5(string.format("Invalid match listener instance: %02X", tonumber(uv2.cast("uintptr_t", slot2))))
+	for datacenter_id in pairs(datacenters_by_id) do
+		table.insert(datacenter_ids, datacenter_id)
+	end
 
-			return false
+	return datacenter_ids
+end
+
+local function get_datacenter_info(datacenter_id)
+	if datacenters_by_id[datacenter_id] == nil then
+		error("unknown datacenter: " .. tostring(datacenter_id), 2)
+	end
+
+	return {
+		name = datacenters_by_id[datacenter_id].name,
+		country_code = datacenters_by_id[datacenter_id].country_code,
+		ping = {
+			direct = datacenters_by_id[datacenter_id].direct,
+			indirect = datacenters_by_id[datacenter_id].indirect,
+			relay = datacenters_by_id[datacenter_id].relay
+		}
+	}
+end
+
+local function get_active_datacenters()
+	return {
+		unpack(saved_settings.active_datacenters or {})
+	}
+end
+
+local function set_active_datacenters(active_datacenters)
+	for _, datacenter_id in pairs(active_datacenters) do
+		if datacenters_by_id[datacenter_id] == nil then
+			error("unknown datacenter: " .. tostring(datacenter_id), 2)
+			return
 		end
-
-		slot1[0] = uv3
-		uv6 = slot1
-
-		return true
 	end
 
-	return false
+	saved_settings.active_datacenters = active_datacenters or {}
+	sync_active_datacenters()
+	rebuild_search_ping_cap()
 end
 
-slot14 = cvar.mm_dedicated_search_maxping
-slot15, slot16, slot17 = nil
-slot9.vtbl_storage[1] = slot0.cast("int(__thiscall*)(void*, SteamRelayNetworkStatus_t *)", function (slot0, slot1)
-	slot2, slot3 = uv0.GetRelayNetworkStatus()
-	slot1.m_eAvail = slot3.m_eAvail
-	slot1.m_bPingMeasurementInProgress = slot3.m_bPingMeasurementInProgress
-	slot1.m_eAvailNetworkConfig = slot3.m_eAvailNetworkConfig
-	slot1.m_eAvailAnyRelay = slot3.m_eAvailAnyRelay
-	slot1.m_debugMsg = slot3.m_debugMsg
+sdr_module.get_active_datacenters = get_active_datacenters
+sdr_module.set_active_datacenters = set_active_datacenters
+sdr_module.get_all_datacenters = get_all_datacenters
+sdr_module.get_datacenter_info = get_datacenter_info
+sdr_module.stop_search = stop_search_with_reason
 
-	if slot3.m_bPingMeasurementInProgress and uv1 ~= nil and uv1 < globals.realtime() then
-		slot1.m_bPingMeasurementInProgress = false
-	end
+if package.loaded["gamesense/sdr"] == nil then
+	package.loaded["gamesense/sdr"] = sdr_module
+end
 
-	return slot2
-end)
-slot9.vtbl_storage[7] = slot0.cast("bool(__thiscall*)(void*, float)", function (slot0, slot1)
-	slot2 = uv0.CheckPingDataUpToDate(slot1)
-
-	xpcall(uv1, uv2)
-
-	return false
-end)
-slot9.vtbl_storage[8] = slot0.cast("int(__thiscall*)(void*, unsigned int, unsigned int *)", function (slot0, slot1, slot2)
-	slot3 = uv0(slot1)
-
-	if uv1 ~= nil and uv1[slot3] ~= nil and uv1[slot3].relay ~= nil and uv1[slot3].indirect ~= nil then
-		slot2[0] = uv2(uv1[slot3].relay)
-
-		return uv1[slot3].indirect
-	end
-
-	slot4, slot2[0] = uv3.GetPingToDataCenter(slot1)
-
-	return slot4
-end)
-slot9.vtbl_storage[9] = slot0.cast("int(__thiscall*)(void*, unsigned int)", function (slot0, slot1)
-	slot2 = uv0(slot1)
-
-	if uv1 ~= nil and uv1[slot2] ~= nil and uv1[slot2].direct ~= nil then
-		return uv1[slot2].direct
-	end
-
-	return uv2.GetDirectPingToPOP(slot1)
-end)
-slot9.vtbl_storage[10] = slot0.cast("int(__thiscall*)(void*)", function (slot0)
-	xpcall(uv0, uv1)
-
-	return uv2.GetPOPCount()
-end)
-slot9.vtbl_storage[11] = slot0.cast("int(__thiscall*)(void*, unsigned int *, int)", function (slot0, slot1, slot2)
-	return uv0.GetPOPList(slot1, slot2)
-end)
-slot18 = panorama.loadstring([[
+panorama_bridge = panorama.loadstring([[
 	var panel, panel_dropdown, panel_top_bar
 	var update_visibility_callback
 	var datacenters = {}
@@ -542,7 +789,7 @@ slot18 = panorama.loadstring([[
 		stop_search: _StopSearch,
 	}
 ]], "CSGOMainMenu")()
-slot19 = [[
+local panorama_layout = [[
 	<root>
 		<styles>
 			<include src="file://{resources}/styles/csgostyles.css" />
@@ -555,389 +802,4 @@ slot19 = [[
 	</root>
 ]]
 
-function slot8(slot0)
-	client.error_log(slot0)
-	uv0.stop_search(slot0)
-end
-
-slot20 = {}
-slot21 = {}
-
-function slot22()
-	slot0, slot1 = uv0()
-
-	for slot5 = 1, slot0 do
-		if uv2[uv1(slot1[slot5 - 1])] ~= nil then
-			if uv3.GetDirectPingToPOP(slot6) > 0 and slot9 < 800 then
-				uv2[slot7].direct = slot9
-			end
-
-			slot10, slot11 = uv3.GetPingToDataCenter(slot6)
-
-			if slot10 > 0 and slot11 ~= nil then
-				if slot10 < 800 then
-					slot8.relay = uv1(slot11)
-					slot8.indirect = slot10
-				end
-			end
-		end
-	end
-end
-
-function slot23(slot0, slot1)
-	if uv0[slot0] == nil or uv0[slot0].geo == nil or uv0[slot1] == nil or uv0[slot1].geo == nil then
-		return 999
-	end
-
-	slot2, slot3 = unpack(uv0[slot0].geo)
-	slot4, slot5 = unpack(uv0[slot1].geo)
-	slot8 = math.sin(math.rad(slot4 - slot2) / 2)
-	slot9 = math.sin(math.rad(slot5 - slot3) / 2)
-	slot10 = slot8 * slot8 + math.cos(math.rad(slot2)) * math.cos(math.rad(slot4)) * slot9 * slot9
-
-	return 125 * 2 * math.atan2(math.sqrt(slot10), math.sqrt(1 - slot10))
-end
-
-function slot17()
-	uv0 = {}
-	slot0, slot1 = uv1()
-	slot2 = inf
-	slot4 = {
-		[uv3(slot9)] = {
-			direct = slot10,
-			indirect = slot11,
-			relay = uv3(slot12)
-		}
-	}
-
-	for slot8 = 1, slot0 do
-		slot9 = slot1[slot8 - 1]
-		slot10 = uv2.GetDirectPingToPOP(slot9)
-		slot11, slot12 = uv2.GetPingToDataCenter(slot9)
-
-		if slot10 > 0 then
-			if 0 < slot10 then
-				slot3 = slot10
-			elseif slot10 < slot2 then
-				slot2 = slot10
-			end
-		end
-	end
-
-	slot9 = 7
-	slot2 = math.min(9, slot2 + client.random_int(-2, slot9))
-	slot3 = slot3 + client.random_int(90, 150)
-	slot5 = {
-		[slot10] = true
-	}
-
-	for slot9, slot10 in ipairs(uv4.active_datacenters) do
-		-- Nothing
-	end
-
-	slot6 = {}
-
-	for slot10, slot11 in ipairs(uv4.active_datacenters) do
-		if slot4[slot11].direct > 0 then
-			table.insert(slot6, slot11)
-		end
-	end
-
-	slot7 = nil
-
-	if #slot6 > 0 then
-		slot7 = slot6[client.random_int(1, #slot6)]
-	else
-		for slot13, slot14 in pairs(slot4) do
-			if uv5(slot13, uv4.active_datacenters[client.random_int(1, #uv4.active_datacenters)]) < inf then
-				slot9 = slot15
-				slot7 = slot13
-			end
-		end
-	end
-
-	uv0[slot7] = {
-		direct = slot2,
-		indirect = slot2,
-		relay = slot7
-	}
-
-	for slot11, slot12 in pairs(slot4) do
-		if uv0[slot11] == nil and slot5[slot11] then
-			uv0[slot11] = {}
-
-			if slot12.direct > 0 then
-				uv0[slot11].direct = slot2 + uv5(slot11, slot7) * 0.2
-			else
-				slot13.direct = slot4[slot11].direct
-			end
-
-			slot13.indirect = uv0[slot7].direct
-			slot13.relay = slot7
-		end
-	end
-
-	for slot11, slot12 in pairs(slot4) do
-		slot13 = nil
-
-		for slot17, slot18 in pairs(uv0) do
-			if slot17 ~= slot11 and uv5(slot11, slot17) < 2 and slot4[slot17].direct > 0 and slot12.direct > 0 then
-				slot13 = slot17
-
-				break
-			end
-		end
-
-		if slot13 ~= nil then
-			slot14 = client.random_int(-2, 4)
-			uv0[slot11] = {
-				direct = uv0[slot13].direct + slot14,
-				indirect = uv0[slot13].indirect + slot14 + client.random_int(-1, 1),
-				relay = uv0[slot13].relay
-			}
-		end
-	end
-
-	for slot12, slot13 in pairs(uv0) do
-		if 0 < math.min(slot13.direct, slot13.indirect) then
-			slot8 = slot14
-		end
-	end
-
-	for slot13, slot14 in pairs(slot4) do
-		if uv0[slot13] == nil and not slot5[slot13] then
-			slot16 = math.min(900, math.floor(slot8 + client.random_int(25, 45) + uv5(slot13, slot7))) + client.random_int(30, 55)
-			uv0[slot13] = {
-				direct = slot16 + client.random_int(-4, 12),
-				indirect = slot16,
-				relay = slot7
-			}
-		end
-	end
-
-	for slot13, slot14 in pairs(uv0) do
-		slot14.direct = slot14.indirect
-		slot14.relay = slot13
-	end
-
-	slot10 = slot8 + 20
-
-	uv6:set_raw_float(slot10)
-	uv6:set_raw_int(slot10)
-end
-
-function slot24()
-	uv0.set_active_datacenters(uv1.active_datacenters or {})
-
-	slot0 = false
-	slot1 = 0
-	slot2 = false
-
-	client.set_event_callback("paint_ui", function ()
-		slot0 = false
-
-		uv0()
-
-		if globals.mapname() == nil then
-			uv1.active_datacenters = json.parse(tostring(uv2.get_active_datacenters()))
-			slot1, slot2 = uv3.GetRelayNetworkStatus()
-
-			if globals.realtime() - uv4 > 0.2 then
-				uv5()
-				uv2.set_datacenters(uv6, slot2.m_bPingMeasurementInProgress == 1)
-
-				uv4 = slot3
-			end
-
-			if not uv7 then
-				uv8 = globals.realtime() + client.random_float(0.9, 1.7)
-			end
-
-			uv7 = slot2.m_bPingMeasurementInProgress == 1
-
-			if #uv1.active_datacenters > 0 then
-				uv9()
-			end
-		end
-
-		if uv10 and not slot0 then
-			uv11:set_string(uv11:get_string())
-		end
-
-		uv10 = slot0
-	end)
-	client.set_event_callback("shutdown", function ()
-		uv0.destroy()
-
-		if uv1 then
-			uv2:set_string(uv2:get_string())
-		end
-
-		uv3()
-		database.write("server_picker", uv4)
-	end)
-
-	function slot4()
-		uv0.set_visible(not ui.get(uv1))
-	end
-
-	ui.set_callback(ui.reference("MISC", "Settings", "Hide from OBS"), slot4)
-	slot4()
-end
-
-function slot25()
-	for slot3, slot4 in pairs(uv0.active_datacenters) do
-		if uv1[slot4] == nil then
-			uv0.active_datacenters = {}
-
-			break
-		end
-	end
-
-	slot0 = {}
-
-	for slot4, slot5 in pairs(uv1) do
-		table.insert(slot0, {
-			slot5.name,
-			slot4
-		})
-	end
-
-	table.sort(slot0, function (slot0, slot1)
-		return slot0[1] < slot1[1]
-	end)
-
-	for slot4, slot5 in ipairs(slot0) do
-		slot0[slot4] = slot5[2]
-	end
-
-	uv2.set_datacenters(uv1, nil, slot0)
-	uv2.set_layouts(uv3)
-	function ()
-		if uv0.create() then
-			uv1()
-		else
-			client.delay_call(0.2, uv2)
-		end
-	end()
-end
-
-function slot26(slot0, slot1)
-	if not slot0 or slot1.status ~= 200 then
-		return
-	end
-
-	if json.parse(slot1.body).success ~= 1 then
-		return
-	end
-
-	table.clear(uv0)
-
-	slot3, slot4 = uv1()
-
-	for slot8 = 1, slot3 do
-		slot10 = uv2(slot4[slot8 - 1])
-		slot11 = {
-			i = slot8,
-			id = slot10,
-			name = slot2.pops[slot10].server_region or slot12.desc
-		}
-
-		if slot2.pops[slot10] ~= nil then
-			if slot11.name:find("_") then
-				slot11.name = slot12.desc
-			end
-
-			if slot12.country ~= nil then
-				slot11.country_code = slot12.country.short_name
-			end
-
-			slot11.server_region = slot12.server_region
-			slot11.geo = slot12.geo
-			slot11.time_offset = slot12.time_offset
-		else
-			slot11.name = slot10:upper()
-		end
-
-		uv0[slot10] = slot11
-	end
-
-	for slot9, slot10 in pairs(uv0) do
-		if slot2.pops[slot9] ~= nil and slot11.server_region ~= nil then
-			slot12 = slot11.groups or {
-				"valve"
-			}
-
-			if uv3.get_launcher_type() == "perfectworld" then
-				if #slot12 == 1 and slot12[1] == "perfectworld" then
-					uv4[slot9] = slot10
-				end
-			elseif slot5 == "steam" then
-				for slot16, slot17 in ipairs(slot12) do
-					if slot17 == "valve" then
-						uv4[slot9] = slot10
-
-						break
-					end
-				end
-			end
-		end
-	end
-
-	uv5()
-	uv6()
-end
-
-client.set_event_callback("paint_ui", function ()
-	if globals.mapname() == nil then
-		xpcall(uv0.get, client.error_log, "https://sapphyr.us/sdr-data/v1/config", uv1)
-		client.unset_event_callback("paint_ui", uv2)
-	end
-end)
-
-if package.loaded["gamesense/sdr"] == nil then
-	package.loaded["gamesense/sdr"] = {
-		get_active_datacenters = function ()
-			return {
-				unpack(uv0.active_datacenters)
-			}
-		end,
-		set_active_datacenters = function (slot0)
-			for slot4, slot5 in pairs(slot0) do
-				if uv0[slot5] == nil then
-					error("unknown datacenter: " .. tostring(slot5), 2)
-
-					return
-				end
-			end
-
-			uv1.active_datacenters = slot0
-
-			uv2.set_active_datacenters(uv1.active_datacenters)
-		end,
-		get_all_datacenters = function ()
-			slot0 = {}
-
-			for slot4, slot5 in pairs(uv0) do
-				table.insert(slot0, slot4)
-			end
-
-			return slot0
-		end,
-		get_datacenter_info = function (slot0)
-			if uv0[slot0] == nil then
-				error("unknown datacenter: " .. tostring(slot0), 2)
-			end
-
-			return {
-				name = uv0[slot0].name,
-				country_code = uv0[slot0].country_code,
-				ping = {
-					direct = uv0[slot0].direct,
-					indirect = uv0[slot0].indirect,
-					relay = uv0[slot0].relay
-				}
-			}
-		end
-	}
-end
+client.set_event_callback("paint_ui", request_config_on_first_paint)
