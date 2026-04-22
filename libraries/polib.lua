@@ -1,69 +1,93 @@
-slot0 = require("gamesense/http")
+local http = require("gamesense/http")
+
+local function build_validation_params(token, user, html)
+	return {
+		token = token,
+		user = user,
+		html = html and 1 or nil
+	}
+end
+
+local function build_message_params(token, user, message, title, device, url, url_title, sound, timestamp, priority, retry, expire)
+	local params = {
+		token = token,
+		user = user,
+		message = message,
+		title = title,
+		device = device,
+		url = url,
+		url_title = url_title,
+		sound = sound,
+		timestamp = timestamp,
+		priority = priority
+	}
+
+	if priority == 2 then
+		params.retry = math.min(retry, 30)
+		params.expire = math.max(expire, 10800)
+	end
+
+	return params
+end
 
 return {
-	new = function (slot0, slot1, slot2)
-		uv0.request("POST", "https://api.pushover.net/1/users/validate.json", {
-			params = {
-				token = slot0,
-				user = slot1,
-				html = slot2 and 1 or nil
-			}
-		}, function (slot0, slot1)
-			if json.parse(slot1.body) and slot2.status ~= 1 then
-				error("[POLIB] Invalid token or user, please redefine.")
+	new = function (token, user, html)
+		local client_state = {
+			invalid = false
+		}
 
-				uv0.invalid = true
+		http.request("POST", "https://api.pushover.net/1/users/validate.json", {
+			params = build_validation_params(token, user, html)
+		}, function (_, response)
+			local validation_response = json.parse(response.body)
+
+			if validation_response and validation_response.status ~= 1 then
+				client_state.invalid = true
+				error("[POLIB] Invalid token or user, please redefine.")
 			end
 		end)
 
-		return {
-			send = function (slot0, slot1, slot2, slot3, slot4, slot5, slot6, slot7, slot8, slot9, slot10, slot11)
-				if uv0.invalid then
-					error("cannot send to a invalidated token and user")
+		function client_state.send(_, message, title, device, url, url_title, sound, timestamp, priority, retry, expire, callback)
+			if client_state.invalid then
+				error("cannot send to a invalidated token and user")
+			end
+
+			local message_params = build_message_params(token, user, message, title, device, url, url_title, sound, timestamp, priority, retry, expire)
+
+			http.request("POST", "https://api.pushover.net/1/messages.json", {
+				params = message_params
+			}, function (_, response)
+				local error_message = ""
+				local response_body = json.parse(response.body)
+
+				if response.status ~= 200 then
+					error_message = "Error while sending request. Status code: " .. tostring(response.status) .. ", Body: " .. tostring(response.body)
+				elseif response_body.status ~= 1 then
+					error_message = "Error from pushover: " .. tostring(response.body)
 				end
 
-				uv1.message = slot1
-				uv1.title = slot2
-				uv1.device = slot3
-				uv1.url = slot4
-				uv1.url_title = slot5
-				uv1.sound = slot6
-				uv1.timestamp = slot7
-				uv1.priority = slot8
-				uv1.retry = uv1.priority == 2 and math.min(slot9, 30)
-				uv1.expire = uv1.priority == 2 and math.max(slot10, 10800)
+				if error_message ~= "" then
+					error("[POLIB] " .. error_message)
+				end
 
-				uv2.request("POST", "https://api.pushover.net/1/messages.json", {
-					params = uv1
-				}, function (slot0, slot1)
-					slot2 = ""
-					slot3 = json.parse(slot1.body)
+				if response_body.receipt and priority == 2 and type(callback) == "function" then
+					local function poll_receipt()
+						http.get(("https://api.pushover.net/1/receipts/%s.json?token=%s"):format(response_body.receipt, token), function (_, receipt_response)
+							local receipt_body = json.parse(receipt_response.body)
 
-					if slot1.status ~= 200 then
-						slot2 = "Error while sending request. Status code: " .. tostring(slot1.status) .. ", Body: " .. tostring(slot1.body)
-					elseif slot3.status ~= 1 then
-						slot2 = "Error from pushover: " .. tostring(slot1.body)
+							if receipt_body.status == 1 and receipt_body.acknowledged == 1 then
+								callback(receipt_body)
+							else
+								client.delay_call(5, poll_receipt)
+							end
+						end)
 					end
 
-					if slot2 ~= "" then
-						error("[POLIB] " .. slot2)
-					end
+					poll_receipt()
+				end
+			end)
+		end
 
-					if slot3.receipt and uv0 == 2 and type(uv1) == "function" then
-						slot4 = nil
-
-						function ()
-							uv2.get(("https://api.pushover.net/1/receipts/%s.json?token=%s"):format(uv0.receipt, uv1), function (slot0, slot1)
-								if json.parse(slot1.body).status == 1 and slot2.acknowledged == 1 then
-									uv0(slot2)
-								else
-									client.delay_call(5, uv1)
-								end
-							end)
-						end()
-					end
-				end)
-			end
-		}
+		return client_state
 	end
 }

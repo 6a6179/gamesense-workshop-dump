@@ -1,6 +1,7 @@
-slot0 = require("gamesense/uilib")
-slot1 = require("gamesense/csgo_weapons")
-slot2 = {
+local ui_library = require("gamesense/uilib")
+local weapons = require("gamesense/csgo_weapons")
+
+local primary_options = {
 	"-",
 	"AWP",
 	"SCAR20/G3SG1",
@@ -18,14 +19,16 @@ slot2 = {
 	"PPBizon",
 	"MP7"
 }
-slot3 = {
+
+local secondary_options = {
 	"-",
 	"CZ75/Tec9/FiveSeven",
 	"P250",
 	"Deagle/Revolver",
 	"Dualies"
 }
-slot4 = {
+
+local grenade_options = {
 	"HE Grenade",
 	"Molotov",
 	"Smoke",
@@ -33,44 +36,47 @@ slot4 = {
 	"Flash",
 	"Decoy"
 }
-slot5 = {
+
+local utility_options = {
 	"Armor",
 	"Helmet",
 	"Zeus",
 	"Defuser"
 }
-slot6 = {
+
+local item_prices = {
 	["-"] = 0,
-	AWP = slot1.weapon_awp.in_game_price,
-	["SCAR20/G3SG1"] = slot1.weapon_scar20.in_game_price,
-	Scout = slot1.weapon_ssg08.in_game_price,
-	["M4/AK47"] = slot1.weapon_m4a1.in_game_price,
-	["Famas/Galil"] = slot1.weapon_famas.in_game_price,
-	["Aug/SG553"] = slot1.weapon_aug.in_game_price,
-	M249 = slot1.weapon_m249.in_game_price,
-	Negev = slot1.weapon_negev.in_game_price,
-	["Mag7/SawedOff"] = slot1.weapon_mag7.in_game_price,
-	Nova = slot1.weapon_nova.in_game_price,
-	XM1014 = slot1.weapon_xm1014.in_game_price,
-	["MP9/Mac10"] = slot1.weapon_mp9.in_game_price,
-	UMP45 = slot1.weapon_ump45.in_game_price,
-	PPBizon = slot1.weapon_bizon.in_game_price,
-	MP7 = slot1.weapon_mp7.in_game_price,
-	["CZ75/Tec9/FiveSeven"] = slot1.weapon_tec9.in_game_price,
-	P250 = slot1.weapon_p250.in_game_price,
-	["Deagle/Revolver"] = slot1.weapon_deagle.in_game_price,
-	Dualies = slot1.weapon_elite.in_game_price,
-	["HE Grenade"] = slot1.weapon_hegrenade.in_game_price,
-	Molotov = slot1.weapon_molotov.in_game_price,
-	Smoke = slot1.weapon_smokegrenade.in_game_price,
-	Flash = slot1.weapon_flashbang.in_game_price,
-	Decoy = slot1.weapon_decoy.in_game_price,
-	Armor = slot1.item_kevlar.in_game_price,
-	Helmet = slot1.item_assaultsuit.in_game_price,
-	Zeus = slot1.weapon_taser.in_game_price,
-	Defuser = slot1.item_cutters.in_game_price
+	AWP = weapons.weapon_awp.in_game_price,
+	["SCAR20/G3SG1"] = weapons.weapon_scar20.in_game_price,
+	Scout = weapons.weapon_ssg08.in_game_price,
+	["M4/AK47"] = weapons.weapon_m4a1.in_game_price,
+	["Famas/Galil"] = weapons.weapon_famas.in_game_price,
+	["Aug/SG553"] = weapons.weapon_aug.in_game_price,
+	M249 = weapons.weapon_m249.in_game_price,
+	Negev = weapons.weapon_negev.in_game_price,
+	["Mag7/SawedOff"] = weapons.weapon_mag7.in_game_price,
+	Nova = weapons.weapon_nova.in_game_price,
+	XM1014 = weapons.weapon_xm1014.in_game_price,
+	["MP9/Mac10"] = weapons.weapon_mp9.in_game_price,
+	UMP45 = weapons.weapon_ump45.in_game_price,
+	PPBizon = weapons.weapon_bizon.in_game_price,
+	MP7 = weapons.weapon_mp7.in_game_price,
+	["CZ75/Tec9/FiveSeven"] = weapons.weapon_tec9.in_game_price,
+	P250 = weapons.weapon_p250.in_game_price,
+	["Deagle/Revolver"] = weapons.weapon_deagle.in_game_price,
+	Dualies = weapons.weapon_elite.in_game_price,
+	["HE Grenade"] = weapons.weapon_hegrenade.in_game_price,
+	Molotov = weapons.weapon_molotov.in_game_price,
+	Smoke = weapons.weapon_smokegrenade.in_game_price,
+	Flash = weapons.weapon_flashbang.in_game_price,
+	Decoy = weapons.weapon_decoy.in_game_price,
+	Armor = weapons.item_kevlar.in_game_price,
+	Helmet = weapons.item_assaultsuit.in_game_price,
+	Zeus = weapons.weapon_taser.in_game_price,
+	Defuser = weapons.item_cutters.in_game_price
 }
-slot7 = {
+
+local purchase_commands = {
 	["MP9/Mac10"] = "buy mp9;",
 	XM1014 = "buy xm1014;",
 	Nova = "buy nova;",
@@ -101,154 +107,194 @@ slot7 = {
 	PPBizon = "buy bizon;",
 	UMP45 = "buy ump45;"
 }
-slot8 = "MISC"
-slot9 = "Miscellaneous"
-slot13 = {
-	primary = slot0.new_combobox(slot8, slot9, "Primary", slot2),
-	secondary = slot0.new_combobox(slot8, slot9, "Secondary", slot3),
-	grenades = slot0.new_multiselect(slot8, slot9, "Grenades", slot4),
-	utilities = slot0.new_multiselect(slot8, slot9, "Utilities", slot5)
+
+local menu_tab = "MISC"
+local menu_section = "Miscellaneous"
+
+local automatic_purchase = ui_library.new_checkbox(menu_tab, menu_section, "Automatic purchase")
+local fast_purchase = ui_library.new_checkbox(menu_tab, menu_section, "Fast purchase")
+local hide_purchase = ui_library.new_checkbox(menu_tab, menu_section, "Hide purchase")
+local cost_based = ui_library.new_checkbox(menu_tab, menu_section, "Cost based")
+
+local purchase_controls = {
+	primary = ui_library.new_combobox(menu_tab, menu_section, "Primary", primary_options),
+	secondary = ui_library.new_combobox(menu_tab, menu_section, "Secondary", secondary_options),
+	grenades = ui_library.new_multiselect(menu_tab, menu_section, "Grenades", grenade_options),
+	utilities = ui_library.new_multiselect(menu_tab, menu_section, "Utilities", utility_options)
 }
-slot15 = slot0.new_slider(slot8, slot9, "Balance override", 0, 16000, 0, true, "$", 1, {
+
+local backup_purchase_controls = {
+	primary = ui_library.new_combobox(menu_tab, menu_section, "Backup Primary", primary_options),
+	secondary = ui_library.new_combobox(menu_tab, menu_section, "Backup Secondary", secondary_options),
+	grenades = ui_library.new_multiselect(menu_tab, menu_section, "Backup Grenades", grenade_options),
+	utilities = ui_library.new_multiselect(menu_tab, menu_section, "Backup Utilities", utility_options)
+}
+
+local balance_override = ui_library.new_slider(menu_tab, menu_section, "Balance override", 0, 16000, 0, true, "$", 1, {
 	[0] = "Auto"
 })
 
-function slot17()
-	uv0.vis = uv1.state
-	uv2.vis = uv1.state and not uv0.state
+local main_grenade_selection_cache = {}
+local backup_grenade_selection_cache = {}
+local primary_purchase_command = ""
+local backup_purchase_command = ""
+local primary_purchase_cost = 0
+local backup_purchase_cost = 0
+local round_reset_in_progress = false
+local purchase_pending = false
 
-	for slot4, slot5 in pairs(uv3) do
-		slot5.vis = slot0
+local function build_purchase_payload(selection_controls)
+	local command_parts = {}
+	local total_cost = 0
+
+	local function append_choice(choice_name)
+		local command = purchase_commands[choice_name] or ""
+		local price = item_prices[choice_name] or 0
+
+		if command ~= "" then
+			table.insert(command_parts, command)
+		end
+
+		total_cost = total_cost + price
 	end
 
-	uv4.vis = slot0 and not uv2.state
-	uv5.vis = slot0 and uv4.state and not uv2.state
+	append_choice(selection_controls.secondary.value)
 
-	for slot5, slot6 in pairs(uv6) do
-		slot6.vis = slot1
+	for _, utility_name in ipairs(selection_controls.utilities.value) do
+		append_choice(utility_name)
 	end
+
+	append_choice(selection_controls.primary.value)
+
+	for _, grenade_name in ipairs(selection_controls.grenades.value) do
+		append_choice(grenade_name)
+	end
+
+	return table.concat(command_parts, " "), total_cost
 end
 
-slot0.new_checkbox(slot8, slot9, "Automatic purchase"):add_callback(slot17)
-slot0.new_checkbox(slot8, slot9, "Fast purchase"):add_callback(slot17)
-slot0.new_checkbox(slot8, slot9, "Hide purchase"):add_callback(slot17)
-slot0.new_checkbox(slot8, slot9, "Cost based"):add_callback(slot17)
-
-slot18 = {}
-
-function slot19(slot0)
-	if #slot0.value > 4 then
-		slot0.value = uv0[slot0.name]
+local function clamp_multiselect_to_four(widget, previous_value_cache)
+	if #widget.value > 4 then
+		widget.value = previous_value_cache[widget] or {}
 	else
-		uv0[slot0.name] = slot1
+		previous_value_cache[widget] = widget.value
 	end
 end
 
-slot13.grenades:add_callback(slot19)
-({
-	primary = slot0.new_combobox(slot8, slot9, "Backup Primary", slot2),
-	secondary = slot0.new_combobox(slot8, slot9, "Backup Secondary", slot3),
-	grenades = slot0.new_multiselect(slot8, slot9, "Backup Grenades", slot4),
-	utilities = slot0.new_multiselect(slot8, slot9, "Backup Utilities", slot5)
-}).grenades:add_callback(slot19)
-
-slot20 = ""
-slot21 = ""
-slot22 = 0
-
-for slot27, slot28 in pairs(slot13) do
-	slot28:add_callback(function ()
-		uv0 = ""
-		uv1 = ""
-		uv2 = 0
-		uv0 = uv0 .. uv3[uv4.secondary.value]
-		uv2 = uv2 + uv5[uv4.secondary.value]
-
-		for slot3, slot4 in ipairs(uv4.utilities.value) do
-			uv0 = uv0 .. uv3[slot4]
-			uv2 = uv2 + uv5[slot4]
-		end
-
-		uv0 = uv0 .. uv3[uv4.primary.value]
-		uv2 = uv2 + uv5[uv4.primary.value]
-
-		for slot3, slot4 in ipairs(uv4.grenades.value) do
-			uv0 = uv0 .. uv3[slot4]
-			uv2 = uv2 + uv5[slot4]
-		end
-
-		uv1 = uv1 .. uv3[uv6.secondary.value]
-
-		for slot3, slot4 in ipairs(uv6.utilities.value) do
-			uv1 = uv1 .. uv3[slot4]
-		end
-
-		uv1 = uv1 .. uv3[uv6.primary.value]
-
-		for slot3, slot4 in ipairs(uv6.grenades.value) do
-			uv1 = uv1 .. uv3[slot4]
-		end
-	end)
+local function refresh_purchase_state()
+	primary_purchase_command, primary_purchase_cost = build_purchase_payload(purchase_controls)
+	backup_purchase_command, backup_purchase_cost = build_purchase_payload(backup_purchase_controls)
 end
 
-for slot27, slot28 in pairs(slot16) do
-	slot28:add_callback(slot23)
+local function update_visibility()
+	local automatic_enabled = automatic_purchase.state
+	local fast_purchase_enabled = fast_purchase.state
+	local cost_based_enabled = cost_based.state
+
+	fast_purchase.vis = automatic_enabled
+	hide_purchase.vis = automatic_enabled
+	cost_based.vis = automatic_enabled
+	balance_override.vis = automatic_enabled and cost_based_enabled
+
+	for _, widget in pairs(purchase_controls) do
+		widget.vis = automatic_enabled
+	end
+
+	for _, widget in pairs(backup_purchase_controls) do
+		widget.vis = automatic_enabled and not fast_purchase_enabled
+	end
 end
 
-function slot24(slot0, slot1)
-	client.exec(slot1 or "")
+local function issue_purchase()
+	if not automatic_purchase.state then
+		return
+	end
 
-	return slot0 > 0 and client.delay_call(0.0001, uv0, slot0 - 1)
-end
+	local local_player = entity.get_local_player()
+	if local_player == nil then
+		return
+	end
 
-slot25 = false
-slot26 = false
+	local account_balance = entity.get_prop(local_player, "m_iAccount") or 0
+	local threshold = balance_override.value == 0 and primary_purchase_cost or balance_override.value
+	local purchase_command = primary_purchase_command
 
-function slot27()
-	if uv0.state then
-		slot0 = entity.get_prop(entity.get_local_player(), "m_iAccount")
+	if account_balance < threshold and backup_purchase_command ~= "" then
+		purchase_command = backup_purchase_command
+	end
 
-		if uv1.value == 0 then
-			slot1 = uv2
-		end
+	if purchase_command == "" then
+		return
+	end
 
-		if slot0 < slot1 then
-			uv3(16, uv4)
-		else
-			uv3(16, uv5)
-		end
+	purchase_pending = true
+
+	if fast_purchase.state then
+		client.exec(purchase_command)
 	else
-		uv3(16, uv5)
+		client.delay_call(0.0001, client.exec, purchase_command)
 	end
-
-	uv6 = true
-
-	client.unset_event_callback("net_update_end", uv7)
 end
 
-slot10:add_event_callback("enter_buyzone", function (slot0)
-	if not uv0 and client.userid_to_entindex(slot0.userid) == entity.get_local_player() and slot0.canbuy then
-		uv1()
+local function on_purchase_tick()
+	if not purchase_pending then
+		return
 	end
-end)
-slot10:add_event_callback("cs_pre_restart", function ()
-	uv0 = true
-	uv1 = false
 
-	if uv2.state then
-		client.delay_call(0.3 - (client.latency() + totime(8)), uv3, 16, uv4)
-	end
-end)
-slot10:add_event_callback("round_poststart", function ()
-	uv0 = false
+	purchase_pending = false
+end
 
-	if not uv1.state then
-		client.delay_call(0, client.set_event_callback, "net_update_end", uv2)
+automatic_purchase:add_callback(update_visibility)
+fast_purchase:add_callback(update_visibility)
+hide_purchase:add_callback(update_visibility)
+cost_based:add_callback(update_visibility)
+
+purchase_controls.grenades:add_callback(function(widget)
+	clamp_multiselect_to_four(widget, main_grenade_selection_cache)
+end)
+backup_purchase_controls.grenades:add_callback(function(widget)
+	clamp_multiselect_to_four(widget, backup_grenade_selection_cache)
+end)
+
+for _, widget in pairs(purchase_controls) do
+	widget:add_callback(refresh_purchase_state)
+end
+
+for _, widget in pairs(backup_purchase_controls) do
+	widget:add_callback(refresh_purchase_state)
+end
+
+refresh_purchase_state()
+update_visibility()
+
+automatic_purchase:add_event_callback("enter_buyzone", function(event)
+	if not round_reset_in_progress and client.userid_to_entindex(event.userid) == entity.get_local_player() and event.canbuy then
+		issue_purchase()
 	end
 end)
-slot10:add_event_callback("player_spawn", function (slot0)
-	if not uv0 and client.userid_to_entindex(slot0.userid) == entity.get_local_player() then
-		uv1()
+
+automatic_purchase:add_event_callback("cs_pre_restart", function()
+	round_reset_in_progress = true
+	purchase_pending = false
+
+	if automatic_purchase.state then
+		client.delay_call(0.3 - (client.latency() + totime(8)), client.exec, primary_purchase_command)
 	end
 end)
-slot10:invoke()
+
+automatic_purchase:add_event_callback("round_poststart", function()
+	round_reset_in_progress = false
+
+	if not hide_purchase.state then
+		client.delay_call(0, on_purchase_tick)
+	end
+end)
+
+automatic_purchase:add_event_callback("player_spawn", function(event)
+	if not round_reset_in_progress and client.userid_to_entindex(event.userid) == entity.get_local_player() then
+		issue_purchase()
+	end
+end)
+
+automatic_purchase:add_event_callback("net_update_end", on_purchase_tick)
+automatic_purchase:invoke()

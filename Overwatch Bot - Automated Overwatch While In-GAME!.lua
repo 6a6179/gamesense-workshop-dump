@@ -1,10 +1,10 @@
-slot0 = require("gamesense/panorama_events")
-slot1 = panorama.open()
-slot2 = slot1.OverwatchAPI
-slot3 = slot1.GameStateAPI
+panorama_events = require("gamesense/panorama_events")
+panorama_api = panorama.open()
+overwatch_api = panorama_api.OverwatchAPI
+game_state_api = panorama_api.GameStateAPI
 
-function ()
-	slot0 = {
+do
+	panorama_events = {
 		Enable = ui.new_checkbox("MISC", "Miscellaneous", "Overwatch Bot"),
 		ForceConvictOptions = ui.new_multiselect("MISC", "Miscellaneous", "Verdict", {
 			"Aimbot",
@@ -27,147 +27,147 @@ function ()
 		}),
 		Stats = {}
 	}
-	slot1 = database.read("csmit195_OWBot") or {}
-	slot1.TotalOverwatches = slot1.TotalOverwatches or 0
-	slot0.Stats.Header = ui.new_label("MISC", "Miscellaneous", "Statistics:")
-	slot0.Stats.CasesCompleted = ui.new_label("MISC", "Miscellaneous", "Cases Completed: " .. slot1.TotalOverwatches)
-	slot0.Stats.CasesAccurate = ui.new_label("MISC", "Miscellaneous", "Cases Accurate: IN_DEV")
-	slot0.Stats.TotalXP = ui.new_label("MISC", "Miscellaneous", "Total XP Earned: IN_DEV")
+	panorama_api = database.read("csmit195_OWBot") or {}
+	panorama_api.TotalOverwatches = panorama_api.TotalOverwatches or 0
+	panorama_events.Stats.Header = ui.new_label("MISC", "Miscellaneous", "Statistics:")
+	panorama_events.Stats.CasesCompleted = ui.new_label("MISC", "Miscellaneous", "Cases Completed: " .. panorama_api.TotalOverwatches)
+	panorama_events.Stats.CasesAccurate = ui.new_label("MISC", "Miscellaneous", "Cases Accurate: IN_DEV")
+	panorama_events.Stats.TotalXP = ui.new_label("MISC", "Miscellaneous", "Total XP Earned: IN_DEV")
 
-	ui.set(slot0.ForceConvictOptions, {
+	ui.set(panorama_events.ForceConvictOptions, {
 		"Aimbot",
 		"Wallhacks",
 		"Other"
 	})
 
-	slot2, slot3 = nil
-	slot4 = 0
+	overwatch_api, game_state_api = nil
+	case_retry_delay = 0
 
 	client.set_event_callback("round_end", function ()
-		if ui.get(uv0.DownloadRules) == "Round End" or slot0 == "Both" then
-			uv1()
+		if ui.get(bot_state.DownloadRules) == "Round End" or panorama_events == "Both" then
+			bot_config()
 		end
 	end)
-	client.set_event_callback("player_death", function (slot0)
-		if ui.get(uv0.DownloadRules) == "Self Death" or slot1 == "Both" then
-			slot3 = client.userid_to_entindex(slot0.attacker)
+	client.set_event_callback("player_death", function (panorama_events)
+		if ui.get(bot_state.DownloadRules) == "Self Death" or panorama_api == "Both" then
+			game_state_api = client.userid_to_entindex(panorama_events.attacker)
 
-			if entity.get_local_player() == client.userid_to_entindex(slot0.userid) then
-				uv1()
+			if entity.get_local_player() == client.userid_to_entindex(panorama_events.userid) then
+				bot_config()
 			end
 		end
 	end)
 
-	slot6 = globals.realtime()
+	last_download_time = globals.realtime()
 
 	client.set_event_callback("post_render", function ()
-		if (ui.get(uv0.DownloadRules) == "Always" or not uv1.IsConnectedOrConnectingToServer()) and globals.realtime() - uv2 > 1 then
-			uv3()
+		if (ui.get(bot_state.DownloadRules) == "Always" or not bot_config.IsConnectedOrConnectingToServer()) and globals.realtime() - case_debounce > 1 then
+			game_state_api()
 
-			uv2 = globals.realtime()
+			case_debounce = globals.realtime()
 		end
 	end)
-	uv2.register_event("PanoramaComponent_Overwatch_CaseUpdated", function ()
-		if uv0 then
+	case_debounce.register_event("PanoramaComponent_Overwatch_CaseUpdated", function ()
+		if bot_state then
 			return
 		end
 
-		if not ui.get(uv1.Enable) then
+		if not ui.get(bot_config.Enable) then
 			return
 		end
 
-		if uv2 then
+		if case_debounce then
 			return
 		end
 
-		slot1 = uv3.IsConnectedOrConnectingToServer()
+		panorama_api = game_state_api.IsConnectedOrConnectingToServer()
 
-		if ui.get(uv1.OnlyProcess) ~= "Both" and (slot0 == "Main-menu" and slot1 or slot0 == "In-game" and not slot1) then
-			uv0 = true
+		if ui.get(bot_config.OnlyProcess) ~= "Both" and (panorama_events == "Main-menu" and panorama_api or panorama_events == "In-game" and not panorama_api) then
+			bot_state = true
 
-			return client.delay_call(1, uv4)
+			return client.delay_call(1, process_case_update)
 		end
 
-		uv0 = false
-		slot2 = uv5.GetAssignedCaseDescription()
+		bot_state = false
+		overwatch_api = overwatch_api.GetAssignedCaseDescription()
 
-		if globals.realtime() - uv6 > ui.get(uv1.DownloadDelay) * 60 and (slot2:sub(1, 4) == "OWC#" or tonumber(slot2) ~= nil) and uv5.GetEvidencePreparationPercentage() == 0 then
-			uv5.StartDownloadingCaseEvidence()
+		if globals.realtime() - last_download_time > ui.get(bot_config.DownloadDelay) * 60 and (overwatch_api:sub(1, 4) == "OWC#" or tonumber(overwatch_api) ~= nil) and overwatch_api.GetEvidencePreparationPercentage() == 0 then
+			overwatch_api.StartDownloadingCaseEvidence()
 
-			uv6 = globals.realtime()
+			last_download_time = globals.realtime()
 
 			print("[OVERWATCH BOT] ", "Starting Case Download")
 		end
 
-		if tonumber(slot2) ~= nil then
+		if tonumber(overwatch_api) ~= nil then
 			-- Nothing
 		end
 
-		if tonumber(slot2) ~= nil and slot3 == 100 then
-			print("[OVERWATCH BOT] ", "Case: ", slot2, ", Finished Download, Waiting: ", ui.get(uv1.VerdictDelay))
+		if tonumber(overwatch_api) ~= nil and game_state_api == 100 then
+			print("[OVERWATCH BOT] ", "Case: ", overwatch_api, ", Finished Download, Waiting: ", ui.get(bot_config.VerdictDelay))
 
-			uv2 = true
+			case_debounce = true
 
-			client.delay_call(ui.get(uv1.VerdictDelay) * 60, function ()
-				slot1 = uv1.IsConnectedOrConnectingToServer()
+			client.delay_call(ui.get(bot_config.VerdictDelay) * 60, function ()
+				panorama_api = bot_config.IsConnectedOrConnectingToServer()
 
-				if ui.get(uv0.OnlyProcess) ~= "Both" and (slot0 == "Main-menu" and slot1 or slot0 == "In-game" and not slot1) then
+				if ui.get(bot_state.OnlyProcess) ~= "Both" and (panorama_events == "Main-menu" and panorama_api or panorama_events == "In-game" and not panorama_api) then
 					print("[OVERWATCH BOT] not allowed to process, waiting til conditions are sufficient")
 
-					return client.delay_call(5, uv2)
+					return client.delay_call(5, case_debounce)
 				end
 
-				slot2 = {
-					[slot7] = "convict"
+				overwatch_api = {
+					[verdict_map] = "convict"
 				}
 
-				for slot6, slot7 in ipairs(ui.get(uv0.ForceConvictOptions)) do
+				for last_download_time, verdict_map in ipairs(ui.get(bot_state.ForceConvictOptions)) do
 					-- Nothing
 				end
 
-				slot3 = string.format("aimbot:%s;wallhack:%s;speedhack:%s;grief:%s;", slot2.Aimbot or "dismiss", slot2.Wallhacks or "dismiss", slot2.Other or "dismiss", slot2.Griefing or "dismiss")
+				game_state_api = string.format("aimbot:%s;wallhack:%s;speedhack:%s;grief:%s;", overwatch_api.Aimbot or "dismiss", overwatch_api.Wallhacks or "dismiss", overwatch_api.Other or "dismiss", overwatch_api.Griefing or "dismiss")
 
-				print("[OVERWATCH BOT] ", "Convicting player for: ", slot3)
-				uv3.SubmitCaseVerdict(slot3)
+				print("[OVERWATCH BOT] ", "Convicting player for: ", game_state_api)
+				game_state_api.SubmitCaseVerdict(game_state_api)
 				print("[OVERWATCH BOT] ", "Finished Convicting, waiting for next case")
 
-				uv4.TotalOverwatches = uv4.TotalOverwatches + 1
+				process_case_update.TotalOverwatches = process_case_update.TotalOverwatches + 1
 
-				ui.set(uv0.Stats.CasesCompleted, "Cases Completed: " .. uv4.TotalOverwatches)
+				ui.set(bot_state.Stats.CasesCompleted, "Cases Completed: " .. process_case_update.TotalOverwatches)
 
-				uv5 = false
+				overwatch_api = false
 			end)
 		end
 
-		if slot2 == "" and slot3 == 100 then
+		if overwatch_api == "" and game_state_api == 100 then
 			-- Nothing
 		end
 	end)
 
-	function slot0.Toggle(slot0)
-		slot1 = type(slot0) == "bool" and slot0 or type(slot0) == "number" and ui.get(slot0) or slot0 == nil and ui.get(uv0.Enable)
+	function panorama_events.Toggle(panorama_events)
+		panorama_api = type(panorama_events) == "bool" and panorama_events or type(panorama_events) == "number" and ui.get(panorama_events) or panorama_events == nil and ui.get(bot_state.Enable)
 
-		ui.set_visible(uv0.VerdictDelay, slot1)
-		ui.set_visible(uv0.DownloadDelay, slot1)
-		ui.set_visible(uv0.ForceConvictOptions, slot1)
-		ui.set_visible(uv0.OnlyProcess, slot1)
-		ui.set_visible(uv0.DownloadRules, slot1)
+		ui.set_visible(bot_state.VerdictDelay, panorama_api)
+		ui.set_visible(bot_state.DownloadDelay, panorama_api)
+		ui.set_visible(bot_state.ForceConvictOptions, panorama_api)
+		ui.set_visible(bot_state.OnlyProcess, panorama_api)
+		ui.set_visible(bot_state.DownloadRules, panorama_api)
 
-		for slot5, slot6 in pairs(uv0.Stats) do
-			ui.set_visible(slot6, slot1)
+		for verdict_finished, last_download_time in pairs(bot_state.Stats) do
+			ui.set_visible(last_download_time, panorama_api)
 		end
 
-		uv1.Active = slot1
+		bot_config.Active = panorama_api
 
-		if slot1 and uv2 then
-			uv2()
+		if panorama_api and case_debounce then
+			case_debounce()
 		end
 	end
 
-	ui.set_callback(slot0.Enable, slot0.Toggle)
-	client.delay_call(1, ui.set, slot0.Enable, slot1.Active)
-	slot0.Toggle(slot1.Active)
+	ui.set_callback(panorama_events.Enable, panorama_events.Toggle)
+	client.delay_call(1, ui.set, panorama_events.Enable, panorama_api.Active)
+	panorama_events.Toggle(panorama_api.Active)
 	client.set_event_callback("shutdown", function ()
-		database.write("csmit195_OWBot", uv0)
+		database.write("csmit195_OWBot", bot_state)
 	end)
-end()
+end

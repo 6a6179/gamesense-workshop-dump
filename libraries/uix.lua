@@ -1,96 +1,105 @@
-slot0 = setmetatable
-slot1 = error
-slot2 = client.set_event_callback
-slot3 = client.unset_event_callback
-slot4 = ui.get
-slot5 = ui.new_checkbox
-slot6 = pairs
-slot7 = ui.set
-slot8 = ui.set_callback
-slot9 = ui.set_visible
-slot10 = 0
-slot11 = 1
-slot12 = 2
-slot13 = {}
-slot14 = {}
-slot15, slot16 = nil
+local setmetatable_fn = setmetatable
+local raise_error = error
+local set_event_callback = client.set_event_callback
+local unset_event_callback = client.unset_event_callback
+local get_value = ui.get
+local new_checkbox = ui.new_checkbox
+local set_value = ui.set
+local set_callback = ui.set_callback
+local set_visible = ui.set_visible
+local pairs_fn = pairs
 
-function slot17(slot0)
-	return uv0[slot0] or uv1("invalid object", 3)
+local control_state_by_object = {}
+local control_state_by_reference = {}
+
+local Control = {}
+Control.__index = Control
+
+local function get_state_by_object(control_object)
+	return control_state_by_object[control_object] or raise_error("invalid object", 3)
 end
 
-function slot18(slot0)
-	return uv0[slot0] or uv1("invalid reference", 2)
+local function get_state_by_reference(reference)
+	return control_state_by_reference[reference] or raise_error("invalid reference", 2)
 end
 
-function slot19(slot0)
-	slot1 = {
-		[uv2] = slot0,
-		[uv3] = {}
-	}
-	slot2 = uv0({}, uv1)
-	uv4[slot2] = slot1
-	uv5[slot0] = slot1
+local function register_event_callback(state, event_name, callback)
+	local event_state = state.event_bindings[event_name]
 
-	return slot2
-end
-
-function slot21(slot0)
-	if uv1(slot0)[uv2] then
-		slot3(slot0, uv0(slot0))
+	if event_state == nil then
+		event_state = {
+			callbacks = {}
+		}
+		event_state.dispatcher = function (...)
+			if get_value(state.reference) then
+				for callback_index = 1, #event_state.callbacks do
+					event_state.callbacks[callback_index](...)
+				end
+			end
+		end
+		state.event_bindings[event_name] = event_state
+		set_event_callback(event_name, event_state.dispatcher)
 	end
 
-	if slot2[uv3] then
-		for slot9, slot10 in uv6(slot4) do
-			slot1 and uv4 or uv5(slot9, slot10)
+	event_state.callbacks[#event_state.callbacks + 1] = callback or raise_error("invalid callback", 3)
+end
+
+local function create_control(reference)
+	local state = {
+		reference = reference,
+		event_bindings = {},
+		change_callback = nil
+	}
+	local control = setmetatable_fn({}, Control)
+
+	control_state_by_object[control] = state
+	control_state_by_reference[reference] = state
+
+	return control
+end
+
+function Control:on(event_name, callback)
+	local state = get_state_by_object(self)
+
+	if event_name == "change" then
+		state.change_callback = callback or raise_error("invalid callback", 3)
+
+		set_callback(state.reference, function (...)
+			state.change_callback(...)
+		end)
+	else
+		register_event_callback(state, event_name, callback)
+	end
+
+	return self
+end
+
+function Control:hide()
+	set_visible(get_state_by_object(self).reference, false)
+end
+
+function Control:show()
+	set_visible(get_state_by_object(self).reference, true)
+end
+
+function Control:get()
+	return get_value(get_state_by_object(self).reference)
+end
+
+function Control:set(value)
+	set_value(get_state_by_object(self).reference, value)
+end
+
+client.set_event_callback("shutdown", function ()
+	for _, state in pairs_fn(control_state_by_object) do
+		for event_name, event_state in pairs_fn(state.event_bindings) do
+			unset_event_callback(event_name, event_state.dispatcher)
 		end
 	end
-end
-
-function slot22(slot0, slot1, slot2)
-	if slot1 == "change" then
-		uv0(slot0)[uv1] = slot2
-	else
-		slot3[uv2][slot1] = slot2
-	end
-
-	uv3(slot3[uv4])
-	uv5(slot3[uv4], uv3)
-end
-
-function slot23(slot0)
-	uv1(uv0(slot0)[uv2], false)
-end
-
-function slot24(slot0)
-	uv1(uv0(slot0)[uv2], true)
-end
-
-function slot25(slot0)
-	return uv1(uv0(slot0)[uv2])
-end
-
-function slot26(slot0, slot1)
-	uv1(uv0(slot0)[uv2], slot1)
-end
-
-function ()
-	uv0 = {
-		on = uv1,
-		hide = uv2,
-		show = uv3,
-		get = uv4,
-		set = uv5
-	}
-	uv6 = {
-		__index = uv0
-	}
-end()
+end)
 
 return {
 	new_checkbox = function (...)
-		if uv0(...) then
-			return uv2(uv1(slot0), uv3)
-		end
+		return create_control(new_checkbox(...))
 	end
 }

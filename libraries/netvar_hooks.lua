@@ -1,6 +1,6 @@
-slot0 = require("ffi")
+local ffi = require("ffi")
 
-slot0.cdef([[
+ffi.cdef([[
 	typedef struct _ntv_RecvProp ntv_RecvProp;
 	typedef struct _ntv_RecvTable ntv_RecvTable;
 	typedef struct _ntv_DVariant ntv_DVariant;
@@ -92,107 +92,126 @@ slot0.cdef([[
 	} ntv_PackedInt;
 ]])
 
-slot3 = slot1(slot0.typeof("ntv_ClientClass*(__thiscall*)(void*)"), (slot0.cast("void***", client.create_interface("client_panorama.dll", "VClient018")) or error("ChlClient is nil."))[0][8])
-slot4 = {}
+local cast = ffi.cast
+local ffi_string = ffi.string
 
-function slot5(slot0, slot1)
-	if slot0.m_nPropCount ~= 0 then
-		for slot5 = 0, slot0.m_nPropCount - 1 do
-			if uv0("ntv_RecvProp&", slot0.m_pProps[slot5]).m_RecvType == 6 and slot6.m_pDataTable ~= uv0("ntv_RecvTable*", 0) and slot6.m_pDataTable.m_nPropCount > 0 then
-				uv1(slot6.m_pDataTable, uv2.string(slot0.m_pNetTableName))
-			end
+local client_interface = cast("void***", client.create_interface("client_panorama.dll", "VClient018")) or error("ChlClient is nil.")
+local get_client_class_head = cast("ntv_ClientClass*(__thiscall*)(void*)", client_interface[0][8])
 
-			slot8 = uv2.string(slot6.m_pVarName)
+local netvar_tables = {}
+local hooked_props = {}
 
-			if uv3[slot1 or uv2.string(slot0.m_pNetTableName)] == nil then
-				uv3[slot7] = {}
-			end
+local function build_netvar_table(recv_table, table_name_override)
+	if recv_table.m_nPropCount == 0 then
+		return
+	end
 
-			uv3[slot7][slot8] = slot6
+	local table_name = table_name_override or ffi_string(recv_table.m_pNetTableName)
+
+	for prop_index = 0, recv_table.m_nPropCount - 1 do
+		local prop = cast("ntv_RecvProp&", recv_table.m_pProps[prop_index])
+
+		if prop.m_RecvType == 6 and prop.m_pDataTable ~= cast("ntv_RecvTable*", 0) and prop.m_pDataTable.m_nPropCount > 0 then
+			build_netvar_table(prop.m_pDataTable, table_name)
 		end
+
+		if netvar_tables[table_name] == nil then
+			netvar_tables[table_name] = {}
+		end
+
+		netvar_tables[table_name][ffi_string(prop.m_pVarName)] = prop
 	end
 end
 
-function slot7(slot0)
-	return uv0("ntv_PackedInt*", uv0("char*", slot0) + 100)
+local function get_packed_int(proxy_data)
+	return cast("ntv_PackedInt*", cast("char*", proxy_data) + 100)
 end
 
-slot8 = {}
-slot9 = {
-	new = function (slot0, slot1)
-		slot0.__index = slot0
+local NetvarHook = {}
+NetvarHook.__index = NetvarHook
 
-		return setmetatable({
-			_prop = slot1 or error("No prop supplied in netvar_hook:new()"),
-			_original_func = slot1.m_ProxyFn,
-			_functions = {}
-		}, slot0)
-	end,
-	bind = function (slot0, slot1)
-		slot2 = {
-			[0] = function (slot0)
-				return slot0.m_Value.m_Int
-			end,
-			function (slot0)
-				return slot0.m_Value.m_Float
-			end,
-			function (slot0)
-				return slot0.m_Value.m_Vector
-			end,
-			function (slot0)
-				return slot0.m_Value.m_Vector
-			end,
-			function (slot0)
-				return slot0.m_Value.m_pString
-			end,
-			function (slot0)
-				return slot0.m_Value.m_Int
-			end,
-			[7] = function (slot0)
-				return slot0.m_Value.m_Int64
-			end
-		}
-		slot0._functions[#slot0._functions + 1] = slot1 or error("No function supplied in netvar_hook:bind()")
-		slot0._callback = uv0("ntv_RecvVarProxyFn", function (slot0, slot1, slot2)
-			for slot6 = 1, #uv0._functions do
-				uv0._functions[slot6](uv1[uv0._prop.m_RecvType](slot0), uv2(slot1).val)
-			end
+function NetvarHook:new(prop)
+	return setmetatable({
+		_prop = prop or error("No prop supplied in netvar_hook:new()"),
+		_original_func = prop.m_ProxyFn,
+		_functions = {}
+	}, self)
+end
 
-			uv0._original_func(slot0, slot1, slot2)
-		end)
-		slot0._prop.m_ProxyFn = slot0._callback
-	end,
-	unbind = function (slot0)
-		slot0._prop.m_ProxyFn = uv0("ntv_RecvVarProxyFn", slot0._original_func)
-		slot0._functions = {}
+function NetvarHook:bind(callback)
+	local value_extractors = {
+		[0] = function (proxy_data)
+			return proxy_data.m_Value.m_Int
+		end,
+		function (proxy_data)
+			return proxy_data.m_Value.m_Float
+		end,
+		function (proxy_data)
+			return proxy_data.m_Value.m_Vector
+		end,
+		function (proxy_data)
+			return proxy_data.m_Value.m_Vector
+		end,
+		function (proxy_data)
+			return proxy_data.m_Value.m_pString
+		end,
+		function (proxy_data)
+			return proxy_data.m_Value.m_Int
+		end,
+		[7] = function (proxy_data)
+			return proxy_data.m_Value.m_Int64
+		end
+	}
 
-		slot0._callback:free()
-	end
-}
-
-function ()
-	slot0 = uv0(uv1)
-
-	while slot0 ~= uv2("ntv_ClientClass*", 0) do
-		if slot0.m_pRecvTable.m_nPropCount ~= 0 then
-			uv3(slot0.m_pRecvTable, nil)
+	self._functions[#self._functions + 1] = callback or error("No function supplied in netvar_hook:bind()")
+	self._callback = cast("ntv_RecvVarProxyFn", function (proxy_data, pointer, output)
+		for function_index = 1, #self._functions do
+			self._functions[function_index](value_extractors[self._prop.m_RecvType](proxy_data), get_packed_int(pointer).val)
 		end
 
-		slot0 = slot0.m_pNext
+		self._original_func(proxy_data, pointer, output)
+	end)
+	self._prop.m_ProxyFn = self._callback
+end
+
+function NetvarHook:unbind()
+	self._prop.m_ProxyFn = cast("ntv_RecvVarProxyFn", self._original_func)
+	self._functions = {}
+
+	if self._callback then
+		self._callback:free()
 	end
-end()
+end
+
+do
+	local client_class = get_client_class_head(client_interface)
+
+	while client_class ~= cast("ntv_ClientClass*", 0) do
+		if client_class.m_pRecvTable.m_nPropCount ~= 0 then
+			build_netvar_table(client_class.m_pRecvTable, nil)
+		end
+
+		client_class = client_class.m_pNext
+	end
+end
+
 client.set_event_callback("shutdown", function ()
-	for slot3, slot4 in pairs(uv0) do
-		slot4:unbind()
+	for _, hook in pairs(hooked_props) do
+		hook:unbind()
 	end
 end)
 
 return {
-	hook_prop = function (slot0, slot1, slot2)
-		if uv1[uv0[slot0][slot1] or error("NetVar supplied was not found.")] == nil then
-			uv1[slot3] = uv2:new(slot3)
+	hook_prop = function (table_name, prop_name, callback)
+		local table_props = netvar_tables[table_name] or error("NetVar supplied was not found.")
+		local prop = table_props[prop_name] or error("NetVar supplied was not found.")
+		local hook = hooked_props[prop]
+
+		if hook == nil then
+			hook = NetvarHook:new(prop)
+			hooked_props[prop] = hook
 		end
 
-		uv1[slot3]:bind(slot2)
+		hook:bind(callback)
 	end
 }

@@ -1,197 +1,229 @@
-slot0 = require("vector")
-slot1 = require("gamesense/entity")
-slot2 = require("gamesense/antiaim_funcs")
-slot3 = require("gamesense/csgo_weapons")
-slot7 = ui.new_slider("RAGE", "Other", "Trace add distance", 5, 50, 20, true, "u")
-slot11, slot12 = ui.reference("Rage", "Other", "Double tap")
-slot13 = false
-slot14 = {
-	2,
-	3,
-	4,
-	5,
-	7,
-	8
-}
-slot15 = {}
-slot16 = nil
+local vector = require("vector")
+local entity_api = require("gamesense/entity")
+local antiaim_funcs = require("gamesense/antiaim_funcs")
 
-function slot17(slot0, slot1)
-	for slot5 = 1, #slot0 do
-		if slot0[slot5] == slot1 then
-			return true, slot5
+local trace_distance_slider = ui.new_slider("RAGE", "Other", "Trace add distance", 5, 50, 20, true, "u")
+local double_tap_checkbox, double_tap_hotkey = ui.reference("Rage", "Other", "Double tap")
+local force_baim_checkbox = ui.new_checkbox("RAGE", "Other", "Force baim on lethal")
+local advanced_settings = ui.new_multiselect("RAGE", "Other", "\n", "Extrapolate local player", "Double tap", "I'm an advanced user")
+local visualize_checkbox = ui.new_checkbox("RAGE", "Other", "Visualise calculations")
+local ignore_force_baim_checkbox = ui.new_checkbox("PLAYERS", "Adjustments", "Ignore force baim calculations")
+
+local body_hitboxes = { 2, 3, 4, 5, 7, 8 }
+local ignored_players = {}
+local last_forced_target = nil
+local esp_flag_registered = false
+
+local function contains_value(list, value)
+	if list == nil then
+		return false, -1
+	end
+
+	for index = 1, #list do
+		if list[index] == value then
+			return true, index
 		end
 	end
 
 	return false, -1
 end
 
-function slot18(slot0, slot1, slot2)
-	return slot1 + uv0(slot0:get_prop("m_vecVelocity")) * slot2 * globals.tickinterval()
-end
-
-function slot19(slot0)
-	for slot4, slot5 in ipairs(slot0) do
-		plist.set(slot5:get_entindex(), "Override prefer body aim", "-")
+local function clear_player_overrides(players)
+	for index = 1, #players do
+		plist.set(players[index]:get_entindex(), "Override prefer body aim", "-")
 	end
 end
 
-function slot20(slot0)
-	slot1 = uv0(slot0:get_prop("m_vecOrigin"))
-	slot1.z = slot1.z + slot0:get_prop("m_vecViewOffset[2]")
-
-	return slot1
+local function get_eye_position(player)
+	local origin = vector(player:get_prop("m_vecOrigin"))
+	origin.z = origin.z + player:get_prop("m_vecViewOffset[2]")
+	return origin
 end
 
-function slot21(slot0, slot1)
-	slot2, slot3 = slot0:to(slot1):vectors()
-	slot4 = slot0:clone() + slot2
-	slot4.z = slot0.z
-	slot5 = ui.get(uv0)
+local function build_trace_points(start_position, target_position, extrapolate_local_player)
+	local direction = target_position - start_position
+	local distance_to_target = direction:length()
+
+	if distance_to_target == 0 then
+		return { start_position }
+	end
+
+	local unit_direction = direction / distance_to_target
+	local add_distance = ui.get(trace_distance_slider)
+
+	if extrapolate_local_player then
+		return {
+			start_position,
+			start_position + unit_direction * add_distance,
+			start_position - unit_direction * add_distance
+		}
+	end
 
 	return {
-		slot4,
-		slot4 + slot2 * slot5,
-		slot4 - slot2 * slot5
+		start_position,
+		start_position + unit_direction * add_distance
 	}
 end
 
-function slot22(slot0, slot1, slot2, slot3)
-	slot7 = 0
+local function weapon_can_be_dual_tapped(weapon)
+	return weapon ~= nil and weapon.cycletime ~= nil and weapon.cycletime >= 0.2 and weapon.cycletime <= 0.3
+end
 
-	for slot11, slot12 in ipairs(uv2(slot2 and uv0(slot0, uv1(slot0), 5) or uv1(slot0), uv1(slot1))) do
-		slot13 = 0
+local function trace_damage(weapon, local_player, target_player, extrapolate_local_player, visualize)
+	local best_damage = 0
+	local start_position = get_eye_position(local_player)
+	local target_position = get_eye_position(target_player)
+	local trace_points = build_trace_points(start_position, target_position, extrapolate_local_player)
 
-		for slot17 = 1, #uv3 do
-			slot18 = uv4(slot1:hitbox_position(uv3[slot17]))
-			slot19, slot20 = slot0:trace_bullet(slot12.x, slot12.y, slot12.z, slot18.x, slot18.y, slot18.z, false)
+	for point_index = 1, #trace_points do
+		local trace_start = trace_points[point_index]
+		local best_hitbox_damage = 0
 
-			if slot7 < slot20 then
-				slot7 = slot20
+		for hitbox_index = 1, #body_hitboxes do
+			local hitbox_position = target_player:hitbox_position(body_hitboxes[hitbox_index])
+			local _, damage = weapon:trace_bullet(trace_start.x, trace_start.y, trace_start.z, hitbox_position.x, hitbox_position.y, hitbox_position.z, false)
+			damage = damage or 0
+
+			if damage > best_damage then
+				best_damage = damage
 			end
 
-			if slot13 < slot20 then
-				slot13 = slot20
+			if damage > best_hitbox_damage then
+				best_hitbox_damage = damage
 			end
-		end
 
-		if slot3 then
-			slot15 = uv4(renderer.world_to_screen(slot12:unpack()))
-			slot16 = uv4(renderer.world_to_screen(slot4:unpack()))
+			if visualize then
+				local start_screen_x, start_screen_y = renderer.world_to_screen(trace_start:unpack())
+				local hitbox_screen_x, hitbox_screen_y = renderer.world_to_screen(hitbox_position:unpack())
 
-			if uv4(renderer.world_to_screen(slot5:unpack())):length() ~= 0 and slot15:length() ~= 0 and slot16:length() ~= 0 then
-				renderer.text(slot15.x, slot15.y, 255, 0, 0, 255, "d+", 0, string.format("%s", slot13))
-				renderer.line(slot14.x, slot14.y, slot15.x, slot15.y, 255, 255, 255, 255)
-				renderer.line(slot15.x, slot15.y, slot16.x, slot16.y, 255, 255, 255, 255)
+				if start_screen_x ~= nil and start_screen_y ~= nil and hitbox_screen_x ~= nil and hitbox_screen_y ~= nil then
+					renderer.text(start_screen_x, start_screen_y, 255, 0, 0, 255, "d+", 0, string.format("%d", best_hitbox_damage))
+					renderer.line(start_screen_x, start_screen_y, hitbox_screen_x, hitbox_screen_y, 255, 255, 255, 255)
+				end
 			end
 		end
 	end
 
-	return slot7
+	return best_damage
 end
 
-function slot23(slot0)
-	return slot0 and slot0.cycletime and slot0.cycletime >= 0.2 and slot0.cycletime <= 0.3
-end
+local function should_force_body_aim(local_player, target_player, force_double_tap)
+	local weapon = local_player:get_player_weapon()
+	if weapon == nil then
+		return false
+	end
 
-function slot24(slot0, slot1, slot2)
-	if slot1 <= slot2 then
+	local target_health = target_player:get_prop("m_iHealth") or 0
+	local extrapolate_local_player = contains_value(ui.get(advanced_settings), "Extrapolate local player")
+	local damage = trace_damage(weapon, local_player, target_player, extrapolate_local_player, ui.get(visualize_checkbox))
+
+	if damage >= target_health then
 		return true
 	end
 
-	if ui.get(uv0) and ui.get(uv1) and uv2.get_tickbase_shifting() > 2 and uv3(ui.get(uv4), "Double tap") then
-		return uv5(slot0) and slot1 <= slot2 * 2
+	if force_double_tap and ui.get(double_tap_checkbox) and ui.get(double_tap_hotkey) and antiaim_funcs.get_tickbase_shifting() > 2 and weapon_can_be_dual_tapped(weapon) then
+		return damage * 2 >= target_health
 	end
 
 	return false
 end
 
-function slot25(slot0)
-	if uv0.new(client.current_threat()) == nil then
+local function update_visual_visibility()
+	local show_advanced_settings = ui.get(force_baim_checkbox) and contains_value(ui.get(advanced_settings), "I'm an advanced user")
+	ui.set_visible(trace_distance_slider, show_advanced_settings)
+	ui.set_visible(visualize_checkbox, show_advanced_settings)
+end
+
+local function on_paint()
+	if not ui.get(force_baim_checkbox) or not ui.get(visualize_checkbox) then
+		return
+	end
+end
+
+local function on_setup_command()
+	if not ui.get(force_baim_checkbox) then
 		return
 	end
 
-	if uv1(uv2, slot1:get_entindex()) then
+	local current_threat = client.current_threat()
+	if current_threat == nil or current_threat == 0 then
 		return
 	end
 
-	slot3 = slot1:get_entindex()
-	slot5 = uv4(uv0.get_local_player(), slot1, uv1(ui.get(uv3), "Extrapolate local player"), slot0)
+	local target_player = entity_api.new(current_threat)
+	local local_player = entity_api.get_local_player()
 
-	if slot0 then
+	if target_player == nil or local_player == nil then
 		return
 	end
 
-	slot9 = uv6(uv5(slot2:get_player_weapon():get_entindex()), slot1:get_prop("m_iHealth"), slot5)
-
-	if uv7 ~= nil and uv7:get_entindex() ~= slot3 then
-		plist.set(uv7:get_entindex(), "Override prefer body aim", "-")
+	local target_index = target_player:get_entindex()
+	if contains_value(ignored_players, target_index) then
+		return
 	end
 
-	uv7 = slot1
-
-	plist.set(slot3, "Override prefer body aim", slot9 and "Force" or "-")
-end
-
-function slot26(slot0)
-	uv0(false)
-end
-
-function slot27()
-	uv0(true)
-end
-
-function slot28(slot0)
-	return ui.get(uv0) and plist.get(slot0, "Override prefer body aim") == "Force" and not uv1(uv2, slot0)
-end
-
-function slot29()
-	slot0 = uv0(ui.get(uv1), "I'm an advanced user") and ui.get(uv2)
-
-	ui.set_visible(uv3, slot0)
-	ui.set_visible(uv4, slot0)
-	slot0 and ui.get(uv3) and client.set_event_callback or client.unset_event_callback("paint", uv5)
-end
-
-function slot30()
-	slot1 = ui.get(uv0) and client.set_event_callback or client.unset_event_callback
-
-	slot1("setup_command", uv1)
-	slot1("round_prestart", function ()
-		uv0(uv1.get_players(true))
-	end)
-
-	if not uv4 then
-		client.register_esp_flag("FORCE", 255, 255, 255, uv5)
-
-		uv4 = true
+	if last_forced_target ~= nil and last_forced_target:get_entindex() ~= target_index then
+		plist.set(last_forced_target:get_entindex(), "Override prefer body aim", "-")
 	end
 
-	ui.set_visible(uv6, slot0)
-	uv7()
+	last_forced_target = target_player
+
+	local should_force_double_tap = contains_value(ui.get(advanced_settings), "Double tap")
+	plist.set(target_index, "Override prefer body aim", should_force_body_aim(local_player, target_player, should_force_double_tap) and "Force" or "-")
 end
 
-ui.set_callback(ui.new_checkbox("RAGE", "Other", "Force baim on lethal"), slot30)
-ui.set_callback(ui.new_multiselect("RAGE", "Other", "\n", "Extrapolate local player", "Double tap", "I'm an advanced user"), slot29)
-ui.set_callback(ui.new_checkbox("RAGE", "Other", "Visualise calculations"), slot29)
-slot30()
-ui.set_callback(ui.new_checkbox("PLAYERS", "Adjustments", "Ignore force baim calculations"), function (slot0)
-	slot2 = ui.get(uv0)
-	slot3, slot4 = uv1(uv2, ui.get(uv0))
+local function on_round_prestart()
+	clear_player_overrides(entity_api.get_players(true))
+	last_forced_target = nil
+end
 
-	if ui.get(slot0) and not slot3 then
-		table.insert(uv2, slot2)
-		plist.set(slot2, "Override prefer body aim", "-")
+local function update_callbacks()
+	local enabled = ui.get(force_baim_checkbox)
+	local callback = enabled and client.set_event_callback or client.unset_event_callback
+
+	callback("setup_command", on_setup_command)
+	callback("round_prestart", on_round_prestart)
+
+	if not esp_flag_registered then
+		client.register_esp_flag("FORCE", 255, 255, 255, function(entity_index)
+			return ui.get(force_baim_checkbox) and plist.get(entity_index, "Override prefer body aim") == "Force" and not contains_value(ignored_players, entity_index)
+		end)
+
+		esp_flag_registered = true
+	end
+
+	update_visual_visibility()
+end
+
+ui.set_callback(force_baim_checkbox, update_callbacks)
+ui.set_callback(advanced_settings, update_callbacks)
+ui.set_callback(visualize_checkbox, update_callbacks)
+
+ui.set_callback(ignore_force_baim_checkbox, function()
+	local selected_player = ui.get(ui.reference("PLAYERS", "Players", "Player list"))
+	if selected_player == nil then
+		return
+	end
+
+	local is_ignored, ignore_index = contains_value(ignored_players, selected_player)
+
+	if ui.get(ignore_force_baim_checkbox) and not is_ignored then
+		ignored_players[#ignored_players + 1] = selected_player
+		plist.set(selected_player, "Override prefer body aim", "-")
 		client.update_player_list()
-	elseif not slot1 and slot3 then
-		table.remove(uv2, slot4)
+	elseif not ui.get(ignore_force_baim_checkbox) and is_ignored then
+		table.remove(ignored_players, ignore_index)
 	end
 end)
-ui.set_callback(ui.reference("PLAYERS", "Players", "Player list"), function (slot0)
-	ui.set(uv0, uv1(uv2, ui.get(slot0)))
-end)
-ui.set_callback(ui.reference("PLAYERS", "Players", "Reset all"), function ()
-	uv0 = {}
 
-	ui.set(uv1, false)
+ui.set_callback(ui.reference("PLAYERS", "Players", "Player list"), function(control)
+	ui.set(ignore_force_baim_checkbox, contains_value(ignored_players, ui.get(control)))
 end)
+
+ui.set_callback(ui.reference("PLAYERS", "Players", "Reset all"), function()
+	ignored_players = {}
+	ui.set(ignore_force_baim_checkbox, false)
+end)
+
+update_callbacks()
+client.set_event_callback("paint", on_paint)

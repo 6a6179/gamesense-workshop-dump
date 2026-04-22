@@ -1,34 +1,32 @@
-slot0 = require("gamesense/uix")
-slot1 = client.userid_to_entindex
-slot2 = entity.get_players
-slot3 = entity.get_prop
-slot4 = entity.is_dormant
-slot5 = entity.is_enemy
-slot6 = globals.curtime
-slot7 = math.sqrt
-slot8 = renderer.text
-slot9 = renderer.world_to_screen
-slot10 = table.remove
-slot11 = ui.get
-slot12 = ui.new_checkbox
-slot13 = ui.new_color_picker
-slot14 = ui.new_slider
-slot15 = ui.reference
-slot16 = ui.set_callback
-slot17 = ui.set_visible
-slot18, slot19, slot20 = nil
-slot21 = {}
+local uix = require("gamesense/uix")
+local userid_to_entindex = client.userid_to_entindex
+local get_players = entity.get_players
+local get_origin = entity.get_origin
+local get_prop = entity.get_prop
+local is_dormant = entity.is_dormant
+local is_enemy = entity.is_enemy
+local curtime = globals.curtime
+local distance = math.sqrt
+local draw_text = renderer.text
+local world_to_screen = renderer.world_to_screen
+local remove = table.remove
 
-function slot22(slot0, slot1, slot2, slot3, slot4, slot5)
-	return uv0((slot3 - slot0)^2 + (slot4 - slot1)^2 + (slot5 - slot2)^2)
+local enabled_checkbox = uix.new_checkbox("LUA", "A", "Footstep ESP")
+local color_picker = uix.new_color_picker("LUA", "A", "Footstep color", 255, 255, 255, 255)
+local distance_slider = uix.new_slider("LUA", "A", "\nFootstep distance", 0, 1250, 850, true, "u")
+local active_footsteps = {}
+
+local function distance3d(x1, y1, z1, x2, y2, z2)
+	return distance((x2 - x1)^2 + (y2 - y1)^2 + (z2 - z1)^2)
 end
 
-function slot23(slot0, slot1, slot2)
-	for slot8 = 1, #uv0() do
-		if uv3(slot3[slot8]) == false then
-			slot10, slot11, slot12 = uv4(slot9, "m_vecOrigin")
-
-			if uv5(slot10, slot11, slot12, slot0, slot1, slot2) <= uv1(uv2) then
+local function is_near_enemy(x, y, z)
+	local players = get_players(true)
+	for index = 1, #players do
+		local player = players[index]
+		if player ~= nil and not is_dormant(player) and is_enemy(player) then
+			local enemy_x, enemy_y, enemy_z = get_prop(player, "m_vecOrigin")
+			if enemy_x ~= nil and distance3d(enemy_x, enemy_y, enemy_z, x, y, z) <= ui.get(distance_slider) then
 				return true
 			end
 		end
@@ -37,62 +35,58 @@ function slot23(slot0, slot1, slot2)
 	return false
 end
 
-function slot24()
-	slot1, slot2, slot3, slot4 = uv1(uv2)
+local function clear_footsteps()
+	active_footsteps = {}
+end
 
-	for slot8 = #uv3, 1, -1 do
-		if uv3[slot8].delay_time <= uv0() then
-			slot9.alpha = slot9.alpha - 1
+local function update_visibility()
+	local enabled = ui.get(enabled_checkbox)
+	ui.set_visible(color_picker, enabled)
+	ui.set_visible(distance_slider, enabled)
+end
 
-			if slot9.alpha <= 0 then
-				uv4(uv3, slot8)
+local function on_paint()
+	local red, green, blue, alpha = ui.get(color_picker)
+	local now = curtime()
+
+	for index = #active_footsteps, 1, -1 do
+		local footstep = active_footsteps[index]
+
+		if footstep.expire_time <= now then
+			footstep.alpha = footstep.alpha - 1
+			if footstep.alpha <= 0 then
+				remove(active_footsteps, index)
 			end
 		end
 
-		slot10, slot11 = uv5(slot9.x, slot9.y, slot9.z)
-
-		if slot10 ~= nil then
-			uv6(slot10, slot11, slot1, slot2, slot3, slot9.alpha, "cd", 0, "step")
+		local screen_x, screen_y = world_to_screen(footstep.x, footstep.y, footstep.z)
+		if screen_x ~= nil and screen_y ~= nil then
+			draw_text(screen_x, screen_y, red, green, blue, footstep.alpha, "cd", 0, "step")
 		end
 	end
 end
 
-function slot25(slot0)
-	if uv1(uv0(slot0.userid)) == true then
-		slot2, slot3, slot4 = entity.get_origin(slot1)
+local function on_player_footstep(event)
+	local player = userid_to_entindex(event.userid)
+	if player == 0 or not is_enemy(player) then
+		return
+	end
 
-		if slot2 ~= nil and uv2(slot2, slot3, slot4) then
-			uv3[#uv3 + 1] = {
-				alpha = 255,
-				x = slot2,
-				y = slot3,
-				z = slot4,
-				delay_time = uv4() + 1
-			}
-		end
+	local origin_x, origin_y, origin_z = get_origin(player)
+	if origin_x ~= nil and is_near_enemy(origin_x, origin_y, origin_z) then
+		active_footsteps[#active_footsteps + 1] = {
+			alpha = 255,
+			x = origin_x,
+			y = origin_y,
+			z = origin_z,
+			expire_time = curtime() + 1
+		}
 	end
 end
 
-function slot26(slot0)
-	uv0 = {}
-end
-
-function slot27()
-	uv0 = {}
-end
-
-function slot28(slot0)
-	uv1(uv2, uv0(slot0))
-end
-
-function ()
-	uv0 = uv1.new_checkbox("LUA", "A", "Footstep ESP")
-	uv2 = uv3("LUA", "A", "Footstep color", 255, 255, 255, 255)
-	uv4 = uv5("LUA", "A", "\nFootstep distance", 0, 1250, 850, true, "u")
-
-	uv0:on("change", uv6)
-	uv0:on("paint", uv7)
-	uv0:on("player_footstep", uv8)
-	uv0:on("round_start", uv9)
-	uv0:on("level_init", uv10)
-end()
+enabled_checkbox:on("change", update_visibility)
+enabled_checkbox:on("paint", on_paint)
+enabled_checkbox:on("player_footstep", on_player_footstep)
+enabled_checkbox:on("round_start", clear_footsteps)
+enabled_checkbox:on("level_init", clear_footsteps)
+update_visibility()

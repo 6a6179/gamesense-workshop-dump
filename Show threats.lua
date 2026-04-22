@@ -1,89 +1,101 @@
-slot0 = entity.get_prop
-slot1 = ui.get
-slot2 = math.sqrt
-slot3 = math.sin
-slot5 = entity.get_local_player
-slot6 = entity.get_players
-slot7 = entity.get_player_name
-slot8 = client.screen_size
-slot9 = renderer.text
-slot11 = math.cos(math.rad(10))
+local aim_dot_threshold = math.cos(math.rad(10))
 
-function slot13(slot0, slot1, slot2)
-	if uv0(slot0 * slot0 + slot1 * slot1 + slot2 * slot2) == 0 then
-		return 0, 0, 0
-	end
+local function normalize_vector(x, y, z)
+    local length = math.sqrt(x * x + y * y + z * z)
 
-	slot4 = 1 / slot3
+    if length == 0 then
+        return 0, 0, 0
+    end
 
-	return slot0 * slot4, slot1 * slot4, slot2 * slot4
+    local inverse_length = 1 / length
+
+    return x * inverse_length, y * inverse_length, z * inverse_length
 end
 
-function slot14(slot0, slot1, slot2, slot3, slot4, slot5)
-	return slot0 * slot3 + slot1 * slot4 + slot2 * slot5
+local function dot_product(x1, y1, z1, x2, y2, z2)
+    return x1 * x2 + y1 * y2 + z1 * z2
 end
 
-function slot15(slot0, slot1)
-	slot2 = uv0(slot0)
-	slot3 = uv0(slot1)
-	slot5 = uv2(slot2)
+local function angles_to_forward(pitch, yaw)
+    local pitch_radians = math.rad(pitch)
+    local yaw_radians = math.rad(yaw)
+    local cos_pitch = math.cos(pitch_radians)
 
-	return slot5 * uv2(slot3), slot5 * uv1(slot3), -uv1(slot2)
+    return cos_pitch * math.cos(yaw_radians), cos_pitch * math.sin(yaw_radians), -math.sin(pitch_radians)
 end
 
-function slot16(slot0, slot1, slot2, slot3)
-	slot4, slot5 = uv0(slot0, "m_angEyeAngles")
+local function is_player_aiming_at_position(player, x, y, z)
+    local pitch, yaw = entity.get_prop(player, "m_angEyeAngles")
 
-	if slot4 == nil then
-		return false
-	end
+    if pitch == nil then
+        return false
+    end
 
-	slot6, slot7, slot8 = uv1(slot4, slot5)
-	slot9, slot10, slot11 = uv0(slot0, "m_vecOrigin")
+    local forward_x, forward_y, forward_z = angles_to_forward(pitch, yaw)
+    local origin_x, origin_y, origin_z = entity.get_prop(player, "m_vecOrigin")
 
-	if slot9 == nil then
-		return false
-	end
+    if origin_x == nil then
+        return false
+    end
 
-	slot12, slot13, slot14 = uv2(slot1 - slot9, slot2 - slot10, slot3 - slot11)
+    local direction_x, direction_y, direction_z = normalize_vector(x - origin_x, y - origin_y, z - origin_z)
 
-	return uv4 < uv3(slot12, slot13, slot14, slot6, slot7, slot8)
+    return aim_dot_threshold < dot_product(direction_x, direction_y, direction_z, forward_x, forward_y, forward_z)
 end
 
-function slot17()
-	if uv0() == nil then
-		return false, nil
-	end
+local function get_current_threat()
+    local local_player = entity.get_local_player()
 
-	slot1, slot2, slot3 = uv1(slot0, "m_vecOrigin")
+    if local_player == nil then
+        return false, nil
+    end
 
-	if slot1 == nil then
-		return false, nil
-	end
+    local local_x, local_y, local_z = entity.get_prop(local_player, "m_vecOrigin")
 
-	for slot8 = 1, #uv2(true) do
-		if uv3(slot4[slot8], slot1, slot2, slot3) then
-			return true, uv4(slot0) or "An enemy"
-		end
-	end
+    if local_x == nil then
+        return false, nil
+    end
 
-	return false, nil
+    local enemies = entity.get_players(true)
+
+    for index = 1, #enemies do
+        local enemy = enemies[index]
+
+        if is_player_aiming_at_position(enemy, local_x, local_y, local_z) then
+            return true, entity.get_player_name(enemy) or "An enemy"
+        end
+    end
+
+    return false, nil
 end
 
-function slot18()
-	slot0, slot1 = uv0()
+local function on_paint()
+    local is_threatening, enemy_name = get_current_threat()
 
-	if slot0 then
-		slot2, slot3 = uv1()
+    if is_threatening then
+        local screen_width, screen_height = client.screen_size()
 
-		uv2(slot2 / 2, slot3 - 100, 255, 255, 50, 255, "c+", 0, slot1, " is aiming in your direction")
-	end
+        renderer.text(
+            screen_width / 2,
+            screen_height - 100,
+            255,
+            255,
+            50,
+            255,
+            "c+",
+            0,
+            enemy_name,
+            " is aiming in your direction"
+        )
+    end
 end
 
-ui.set_callback(ui.new_checkbox("VISUALS", "Other ESP", "Show threats"), function (slot0)
-	if uv0(slot0) then
-		client.set_event_callback("paint", uv1)
-	else
-		client.unset_event_callback("paint", uv1)
-	end
+local show_threats_checkbox = ui.new_checkbox("VISUALS", "Other ESP", "Show threats")
+
+ui.set_callback(show_threats_checkbox, function(checkbox)
+    if ui.get(checkbox) then
+        client.set_event_callback("paint", on_paint)
+    else
+        client.unset_event_callback("paint", on_paint)
+    end
 end)

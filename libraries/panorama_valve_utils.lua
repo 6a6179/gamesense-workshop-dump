@@ -1,9 +1,5 @@
-slot1 = {}
-
-table.insert(slot1, "<root>")
-table.insert(slot1, "\t<scripts>")
-
-for slot5, slot6 in pairs({
+local layout_lines = {}
+local include_paths = {
 	SessionUtil = "file://{resources}/scripts/common/sessionutil.js",
 	CharacterAnims = "file://{resources}/scripts/common/characteranims.js",
 	FlipPanelAnimation = "file://{resources}/scripts/common/flip_panel_anim.js",
@@ -19,26 +15,48 @@ for slot5, slot6 in pairs({
 	Avatar = "file://{resources}/scripts/avatar.js",
 	EventUtil = "file://{resources}/scripts/common/eventutil.js",
 	ItemInfo = "file://{resources}/scripts/common/iteminfo.js"
-}) do
-	table.insert(slot1, "\t\t<include src=\"" .. slot6 .. "\"/>")
+}
+local utility_names = {
+	SessionUtil = true,
+	CharacterAnims = true,
+	FlipPanelAnimation = true,
+	Scheduler = true,
+	TeamColor = true,
+	LicenseUtil = true,
+	OperationUtil = true,
+	ItemContextEntires = true,
+	OperationMissionCard = true,
+	IconUtil = true,
+	MockAdapter = true,
+	FormatText = true,
+	Avatar = true,
+	EventUtil = true,
+	ItemInfo = true
+}
+
+table.insert(layout_lines, "<root>")
+table.insert(layout_lines, "\t<scripts>")
+
+for _, include_path in pairs(include_paths) do
+	table.insert(layout_lines, "\t\t<include src=\"" .. include_path .. "\"/>")
 end
 
-table.insert(slot1, "\t</scripts>")
-table.insert(slot1, "")
-table.insert(slot1, "\t<script>")
+table.insert(layout_lines, "\t</scripts>")
+table.insert(layout_lines, "")
+table.insert(layout_lines, "\t<script>")
 
-for slot5, slot6 in pairs(slot0) do
-	table.insert(slot1, string.format("\t\t$.GetContextPanel().%s = %s;", slot5, slot5))
+for utility_name, _ in pairs(utility_names) do
+	table.insert(layout_lines, string.format("\t\t$.GetContextPanel().%s = %s;", utility_name, utility_name))
 end
 
-table.insert(slot1, "\t</script>")
-table.insert(slot1, "")
-table.insert(slot1, "\t<Panel>")
-table.insert(slot1, "\t</Panel>")
-table.insert(slot1, "</root>")
+table.insert(layout_lines, "\t</script>")
+table.insert(layout_lines, "")
+table.insert(layout_lines, "\t<Panel>")
+table.insert(layout_lines, "\t</Panel>")
+table.insert(layout_lines, "</root>")
 
-slot1 = table.concat(slot1, "\n")
-slot2 = [[
+local layout_xml = table.concat(layout_lines, "\n")
+local context_template = [[
 	let global_this = this
 	let modified_props = {}
 
@@ -85,35 +103,42 @@ slot2 = [[
 		destroy: _Destroy
 	}
 ]]
-slot3 = {}
+local registered_contexts = {}
 
-function (slot0)
-	if uv0[slot0 or ""] ~= nil then
+local function register_for_context(context_name, utilities)
+	context_name = context_name or ""
+
+	if registered_contexts[context_name] ~= nil then
 		return false
-	elseif type(slot0) ~= "string" and slot0:gsub(" ", "") ~= "" then
+	elseif type(context_name) ~= "string" then
+		return error("invalid context, expected a non-empty string")
+	elseif context_name ~= "" and context_name:gsub(" ", "") == "" then
 		return error("invalid context, expected a non-empty string")
 	end
 
-	slot1 = slot0 == "" and panorama.loadstring(uv1)() or panorama.loadstring(uv1, slot0)()
+	local context = context_name == "" and panorama.loadstring(context_template)() or panorama.loadstring(context_template, context_name)()
 
-	slot1.create(uv2, uv3)
+	context.create(layout_xml, utilities or utility_names)
 
-	uv0[slot0] = slot1
-end()
+	registered_contexts[context_name] = context
+end
+
 client.set_event_callback("shutdown", function ()
-	for slot3, slot4 in pairs(uv0) do
-		slot4.destroy()
+	for _, context in pairs(registered_contexts) do
+		context.destroy()
 	end
 end)
 
-for slot9 = 1, #{
+local default_contexts = {
 	"CSGOJsRegistration",
 	"CSGOHud",
 	"CSGOMainMenu"
-} do
-	slot4(slot5[slot9])
+}
+
+for context_index = 1, #default_contexts do
+	register_for_context(default_contexts[context_index])
 end
 
 return {
-	register_for_context = slot4
+	register_for_context = register_for_context
 }

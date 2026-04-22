@@ -1,13 +1,13 @@
-slot0 = panorama.open()
-slot2 = slot0.PartyListAPI
-slot3 = slot0.FriendsListAPI
-slot4 = slot0.MyPersonaAPI.GetXuid()
-slot5 = require("gamesense/table_gen")
-slot6 = require("gamesense/http")
-slot7 = require("gamesense/panorama_events")
-slot8 = ui.reference("MISC", "Settings", "Hide from OBS")
-slot9 = {}
-slot10 = {
+panorama_api = panorama.open()
+party_list_api = panorama_api.PartyListAPI
+friends_list_api = panorama_api.FriendsListAPI
+local_xuid = panorama_api.MyPersonaAPI.GetXuid()
+table_generator = require("gamesense/table_gen")
+http_client = require("gamesense/http")
+panorama_events = require("gamesense/panorama_events")
+hide_from_obs = ui.reference("MISC", "Settings", "Hide from OBS")
+account_store = {}
+weekday_names = {
 	"Monday",
 	"Tuesday",
 	"Wednesday",
@@ -16,13 +16,13 @@ slot10 = {
 	"Saturday",
 	"Sunday"
 }
-slot11 = {
+bonus_labels = {
 	["3"] = "REDUCED",
 	["1"] = "1x",
 	[""] = "NO",
 	["1,2"] = "2x"
 }
-slot12 = {
+column_headers = {
 	"Name",
 	"XP earned",
 	"Bonus",
@@ -34,7 +34,7 @@ slot12 = {
 	"Last seen",
 	"Banned"
 }
-slot13 = {
+rank_labels = {
 	[0] = "Unranked",
 	"Silver 1",
 	"Silver 2",
@@ -55,7 +55,7 @@ slot13 = {
 	"Supreme Master First Class",
 	"The Global Elite"
 }
-slot14 = panorama.loadstring([[
+timestamp_helpers = panorama.loadstring([[
 
 	var _GetTimestamp = function() {
 		return Date.now();
@@ -109,171 +109,171 @@ slot14 = panorama.loadstring([[
 	}
 ]])()
 
-function slot15()
-	for slot3, slot4 in pairs(uv0) do
-		uv0[slot3].bonus = "2x"
-		uv0[slot3].initial_xp = uv0[slot3].actual_xp
-		uv0[slot3].initial_level = uv0[slot3].actual_level
+function refresh_bonus_cache()
+	for friends_list_api, local_xuid in pairs(account_store) do
+		account_store[friends_list_api].bonus = "2x"
+		account_store[friends_list_api].initial_xp = account_store[friends_list_api].actual_xp
+		account_store[friends_list_api].initial_level = account_store[friends_list_api].actual_level
 	end
 
-	database.write("manager_reworked", uv0)
+	database.write("manager_reworked", account_store)
 end
 
-function slot16(slot0)
-	if not slot0 then
-		uv0[uv1] = {
+function update_account_entry(panorama_api)
+	if not panorama_api then
+		account_store[steam_id64] = {
 			custom_name = false,
 			xp = 0,
-			actual_xp = uv2.GetCurrentXp(),
-			actual_level = uv2.GetCurrentLevel(),
-			initial_level = uv2.GetCurrentLevel(),
-			initial_xp = uv2.GetCurrentXp(),
-			rank = uv2.GetCompetitiveRank(),
-			wins = uv2.GetCompetitiveWins(),
-			invite_code = uv2.GetFriendCode(),
-			banned = uv3.GetFriendIsVacBanned(uv1) and "YES" or "NO",
-			last_seen = uv4.format_timestamp(uv4.get_timestamp()),
-			prime = uv5.GetFriendPrimeEligible(uv1) and "YES" or "NO",
-			bonus = uv6[uv2.GetActiveXpBonuses()] or "NO"
+			actual_xp = persona_api.GetCurrentXp(),
+			actual_level = persona_api.GetCurrentLevel(),
+			initial_level = persona_api.GetCurrentLevel(),
+			initial_xp = persona_api.GetCurrentXp(),
+			rank = persona_api.GetCompetitiveRank(),
+			wins = persona_api.GetCompetitiveWins(),
+			invite_code = persona_api.GetFriendCode(),
+			banned = friends_api.GetFriendIsVacBanned(steam_id64) and "YES" or "NO",
+			last_seen = timestamp_helpers.format_timestamp(timestamp_helpers.get_timestamp()),
+			prime = party_list_api.GetFriendPrimeEligible(steam_id64) and "YES" or "NO",
+			bonus = bonus_labels[persona_api.GetActiveXpBonuses()] or "NO"
 		}
-	elseif uv0[uv1] then
-		uv0[uv1].name = uv2.GetName()
-		uv0[uv1].actual_xp = uv2.GetCurrentXp()
-		uv0[uv1].actual_level = uv2.GetCurrentLevel()
-		uv0[uv1].rank = uv2.GetCompetitiveRank()
-		uv0[uv1].wins = uv2.GetCompetitiveWins()
-		uv0[uv1].bonus = uv6[uv2.GetActiveXpBonuses()] or "NO"
-		uv0[uv1].last_seen = uv4.format_timestamp(uv4.get_timestamp())
-		uv0[uv1].prime = uv5.GetFriendPrimeEligible(uv1) and "YES" or "NO"
-		uv0[uv1].banned = uv3.GetFriendIsVacBanned(uv1) and "YES" or "NO"
+	elseif account_store[steam_id64] then
+		account_store[steam_id64].name = persona_api.GetName()
+		account_store[steam_id64].actual_xp = persona_api.GetCurrentXp()
+		account_store[steam_id64].actual_level = persona_api.GetCurrentLevel()
+		account_store[steam_id64].rank = persona_api.GetCompetitiveRank()
+		account_store[steam_id64].wins = persona_api.GetCompetitiveWins()
+		account_store[steam_id64].bonus = bonus_labels[persona_api.GetActiveXpBonuses()] or "NO"
+		account_store[steam_id64].last_seen = timestamp_helpers.format_timestamp(timestamp_helpers.get_timestamp())
+		account_store[steam_id64].prime = party_list_api.GetFriendPrimeEligible(steam_id64) and "YES" or "NO"
+		account_store[steam_id64].banned = friends_api.GetFriendIsVacBanned(steam_id64) and "YES" or "NO"
 	end
 
-	database.write("manager_reworked", uv0)
+	database.write("manager_reworked", account_store)
 end
 
-function ()
+do
 	if database.read("manager_reworked") == nil then
-		uv0(false)
+		account_store(false)
 	else
-		uv1 = database.read("manager_reworked")
+		steam_id64 = database.read("manager_reworked")
 
-		for slot3, slot4 in pairs(uv1) do
-			if slot3 == uv2 then
+		for friends_list_api, local_xuid in pairs(steam_id64) do
+			if friends_list_api == persona_api then
 				return
 			end
 		end
 
-		uv0(false)
+		account_store(false)
 	end
-end()
-function ()
-	for slot3, slot4 in pairs(uv0) do
-		uv1.get("https://api.steampowered.com/ISteamUser/GetPlayerBans/v1/?key=E9EA79BB465366C98E5BAF31EC8A6F31&steamids=" .. slot3, function (slot0, slot1)
-			if not slot0 or slot1.status ~= 200 then
+end
+do
+	for friends_list_api, local_xuid in pairs(account_store) do
+		steam_id64.get("https://api.steampowered.com/ISteamUser/GetPlayerBans/v1/?key=E9EA79BB465366C98E5BAF31EC8A6F31&steamids=" .. friends_list_api, function (panorama_api, account_database)
+			if not panorama_api or account_database.status ~= 200 then
 				return
 			end
 
-			if json.parse(slot1.body) and #slot2.players > 0 then
-				uv0[uv1].banned = slot2.players[1].NumberOfVACBans > 0 and slot3.NumberOfGameBans > 0 and "YES" or "NO"
+			if json.parse(account_database.body) and #party_list_api.players > 0 then
+				account_store[steam_id64].banned = party_list_api.players[1].NumberOfVACBans > 0 and friends_list_api.NumberOfGameBans > 0 and "YES" or "NO"
 			end
 		end)
 	end
 
-	database.write("manager_reworked", uv0)
-end()
+	database.write("manager_reworked", account_store)
+end
 
-function slot19(slot0, slot1, slot2, slot3, slot4)
-	if slot0 == slot2 then
-		return slot3 - slot1
-	elseif slot0 < slot2 then
-		return 5000 * (slot2 - slot0) - slot1 + slot3
-	elseif slot2 < slot0 then
-		uv0[slot4].initial_level = uv0[slot4].actual_level
-		uv0[slot4].initial_xp = uv0[slot4].actual_xp
+function calculate_xp(panorama_api, account_database, party_list_api, friends_list_api, local_xuid)
+	if panorama_api == party_list_api then
+		return friends_list_api - account_database
+	elseif panorama_api < party_list_api then
+		return 5000 * (party_list_api - panorama_api) - account_database + friends_list_api
+	elseif party_list_api < panorama_api then
+		account_store[local_xuid].initial_level = account_store[local_xuid].actual_level
+		account_store[local_xuid].initial_xp = account_store[local_xuid].actual_xp
 
-		database.write("manager_reworked", uv0)
+		database.write("manager_reworked", account_store)
 
 		return 0
 	end
 end
 
-slot21 = ui.new_button("MISC", "Settings", "Account manager", function ()
-	uv0(false)
+account_manager_button = ui.new_button("MISC", "Settings", "Account manager", function ()
+	account_store(false)
 end)
 
-function ()
+do
 	if type(database.read("reset_day")) ~= "number" then
-		slot0 = uv0.get_last_wednesday()
+		panorama_api = account_store.get_last_wednesday()
 
-		if uv0.today_utc() < 3 then
-			slot0 = uv0.get_even_last_wednesday()
+		if account_store.today_utc() < 3 then
+			panorama_api = account_store.get_even_last_wednesday()
 		end
 
-		database.write("reset_day", slot0)
-		uv1()
-	elseif uv0.a_week_went_by(database.read("reset_day")) then
-		slot1 = uv0.get_last_wednesday()
+		database.write("reset_day", panorama_api)
+		steam_id64()
+	elseif account_store.a_week_went_by(database.read("reset_day")) then
+		account_database = account_store.get_last_wednesday()
 
-		if uv0.today_utc() < 3 then
-			slot1 = uv0.get_even_last_wednesday()
+		if account_store.today_utc() < 3 then
+			account_database = account_store.get_even_last_wednesday()
 		end
 
-		database.write("reset_day", slot1)
-		uv1()
+		database.write("reset_day", account_database)
+		steam_id64()
 
-		if ui.get(uv2) then
+		if ui.get(persona_api) then
 			return
 		end
 
 		client.color_log(20, 255, 20, "[Account manager] XP bonus is back, enjoy!")
 	end
-end()
+end
 
 if database.read("manager_output") then
-	function (slot0)
-		uv0(true)
+	do local panorama_api = true
+		account_store(true)
 
-		for slot5, slot6 in pairs(uv1) do
-			slot7 = uv1[slot5]
-			slot7.xp = uv2(slot7.initial_level, slot7.initial_xp, slot7.actual_level, slot7.actual_xp, slot5)
+		for table_generator, http_client in pairs(steam_id64) do
+			panorama_events = steam_id64[table_generator]
+			panorama_events.xp = persona_api(panorama_events.initial_level, panorama_events.initial_xp, panorama_events.actual_level, panorama_events.actual_xp, table_generator)
 
 			table.insert({}, {
-				slot7.custom_name or slot7.name,
-				tostring(slot7.xp) .. " XP",
-				slot7.bonus,
-				slot7.actual_level,
-				uv3[slot7.rank],
-				slot7.wins,
-				slot7.prime,
-				slot7.invite_code,
-				slot7.last_seen,
-				slot7.banned
+				panorama_events.custom_name or panorama_events.name,
+				tostring(panorama_events.xp) .. " XP",
+				panorama_events.bonus,
+				panorama_events.actual_level,
+				friends_api[panorama_events.rank],
+				panorama_events.wins,
+				panorama_events.prime,
+				panorama_events.invite_code,
+				panorama_events.last_seen,
+				panorama_events.banned
 			})
 		end
 
 		if database.read("manager_output") then
-			writefile("acc_manager.txt", uv4(slot1, uv5, {
+			writefile("acc_manager.txt", timestamp_helpers(account_database, party_list_api, {
 				style = "Unicode (Single Line)"
 			}))
 		end
 
-		if ui.get(uv6) or slot0 then
+		if ui.get(bonus_labels) or panorama_api then
 			return
 		end
 
 		client.color_log(20, 255, 20, "[Account manager]")
-		client.color_log(255, 255, 255, slot2)
-	end(true)
+		client.color_log(255, 255, 255, party_list_api)
+	end
 end
 
-client.set_event_callback("console_input", function (slot0)
-	if ui.get(uv0) then
+client.set_event_callback("console_input", function (panorama_api)
+	if ui.get(account_store) then
 		return false
 	end
 
-	if slot0:match("^manager_delete") then
-		if uv1[slot0:match("^manager_delete (.*)$")] then
-			uv1[slot1] = nil
+	if panorama_api:match("^manager_delete") then
+		if steam_id64[panorama_api:match("^manager_delete (.*)$")] then
+			steam_id64[account_database] = nil
 
 			client.color_log(20, 255, 20, "[Account manager] Account deleted.")
 		else
@@ -281,42 +281,42 @@ client.set_event_callback("console_input", function (slot0)
 		end
 
 		return true
-	elseif slot0:match("^manager_rename") then
-		if slot0:sub(16, #slot0) ~= "" then
-			if uv1[slot0:sub(16, 32)] then
-				if slot0:sub(34, #slot0) ~= "" then
-					uv1[slot0:sub(16, 32)].custom_name = slot0:sub(34, #slot0)
+	elseif panorama_api:match("^manager_rename") then
+		if panorama_api:sub(16, #panorama_api) ~= "" then
+			if steam_id64[panorama_api:sub(16, 32)] then
+				if panorama_api:sub(34, #panorama_api) ~= "" then
+					steam_id64[panorama_api:sub(16, 32)].custom_name = panorama_api:sub(34, #panorama_api)
 
-					client.color_log(20, 255, 20, "[Account manager] Custom name set for " .. slot0:sub(16, 32))
-					uv2(true)
+					client.color_log(20, 255, 20, "[Account manager] Custom name set for " .. panorama_api:sub(16, 32))
+					persona_api(true)
 				else
-					client.color_log(240, 20, 20, "[Account manager] Please define a name for " .. slot0:sub(16, 32))
+					client.color_log(240, 20, 20, "[Account manager] Please define a name for " .. panorama_api:sub(16, 32))
 				end
-			elseif uv1[uv3] then
-				uv1[uv3].custom_name = slot0:sub(16, #slot0)
+			elseif steam_id64[friends_api] then
+				steam_id64[friends_api].custom_name = panorama_api:sub(16, #panorama_api)
 
-				uv2(true)
+				persona_api(true)
 				client.color_log(20, 255, 20, "[Account manager] Custom name set.")
 			end
-		elseif uv1[uv3] then
+		elseif steam_id64[friends_api] then
 			client.color_log(240, 20, 20, "[Account manager] Please define a name for this account.")
 		else
 			client.color_log(240, 20, 20, "[Account manager] Account doesn't exist in your database.")
 		end
 
 		return true
-	elseif slot0:match("^manager_list") then
-		slot1 = {}
+	elseif panorama_api:match("^manager_list") then
+		account_database = {}
 
-		for slot5, slot6 in pairs(uv1) do
-			table.insert(slot1, {
-				slot5,
-				uv1[slot5].custom_name or slot7.name
+		for table_generator, http_client in pairs(steam_id64) do
+			table.insert(account_database, {
+				table_generator,
+				steam_id64[table_generator].custom_name or panorama_events.name
 			})
 		end
 
 		client.color_log(20, 255, 20, "[Account manager]")
-		client.color_log(255, 255, 255, uv4(slot1, {
+		client.color_log(255, 255, 255, timestamp_helpers(account_database, {
 			"ID64",
 			"Name"
 		}, {
@@ -324,7 +324,7 @@ client.set_event_callback("console_input", function (slot0)
 		}))
 
 		return true
-	elseif slot0:match("^manager_output") then
+	elseif panorama_api:match("^manager_output") then
 		if not database.read("manager_output") then
 			database.write("manager_output", true)
 			client.color_log(20, 255, 20, "[Account manager] Output enabled.")
@@ -334,28 +334,28 @@ client.set_event_callback("console_input", function (slot0)
 		end
 
 		return true
-	elseif slot0:match("^manager_print") then
-		uv5(false)
+	elseif panorama_api:match("^manager_print") then
+		party_list_api(false)
 
 		return true
 	end
 end)
-slot7.register_event("CSGOShowMainMenu", function ()
-	uv0()
-	uv1(true)
+panorama_events.register_event("CSGOShowMainMenu", function ()
+	account_store()
+	steam_id64(true)
 end)
-slot7.register_event("ShowContentPanel", function ()
-	uv0()
-	uv1(true)
+panorama_events.register_event("ShowContentPanel", function ()
+	account_store()
+	steam_id64(true)
 end)
-slot7.register_event("PanoramaComponent_Lobby_PlayerUpdated", function ()
-	uv0()
-	uv1(true)
+panorama_events.register_event("PanoramaComponent_Lobby_PlayerUpdated", function ()
+	account_store()
+	steam_id64(true)
 end)
 client.set_event_callback("cs_win_panel_match", function ()
-	uv0()
-	uv1(true)
+	account_store()
+	steam_id64(true)
 end)
 client.set_event_callback("shutdown", function ()
-	uv0(true)
+	account_store(true)
 end)

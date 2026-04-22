@@ -1,210 +1,262 @@
-slot0 = require("bit")
-slot1 = renderer
-slot2 = slot1.gradient
-slot3 = slot1.rectangle
-slot4 = slot1.text
-slot5 = slot1.measure_text
-slot6 = client.screen_size
-slot7 = client.latency
-slot8 = globals.absoluteframetime
-slot9 = globals.tickinterval
-slot10 = entity.get_local_player
-slot11 = entity.get_prop
-slot12 = math.min
-slot13 = math.max
-slot14 = math.abs
-slot15 = math.sqrt
-slot16 = math.floor
-slot17 = slot0.band
-slot18 = slot0.bnot
-slot19 = slot0.bor
-slot20 = 64
-slot21 = 0.5
-slot22 = 1
-slot23 = 2
-slot24 = 3
-slot25 = 4
-slot26 = 5
-slot27 = 6
-slot28 = {}
-slot29 = 0
-slot30 = 0
-slot31 = 0
-slot32 = {}
+local bit_ops = require("bit")
 
-function slot33(slot0)
-	return uv0(slot0 + 0.5)
+local renderer_api = renderer
+local draw_gradient = renderer_api.gradient
+local draw_rectangle = renderer_api.rectangle
+local draw_text = renderer_api.text
+local measure_text = renderer_api.measure_text
+
+local screen_size = client.screen_size
+local get_ping = client.latency
+local get_frame_time = globals.absoluteframetime
+local get_tick_interval = globals.tickinterval
+local get_local_player = entity.get_local_player
+local get_entity_prop = entity.get_prop
+
+local clamp_min = math.min
+local clamp_max = math.max
+local absolute_value = math.abs
+local square_root = math.sqrt
+local round_down = math.floor
+
+local band = bit_ops.band
+local bnot = bit_ops.bnot
+local bor = bit_ops.bor
+
+local history_length = 64
+local half = 0.5
+local one = 1
+local two = 2
+local three = 3
+local four = 4
+local five = 5
+local six = 6
+
+local history_index = 0
+local histories = {
+	ping = {},
+	fps = {},
+	var = {},
+	speed = {}
+}
+
+local last_fps = 0
+local last_var = 0
+local last_speed = 0
+
+local function round_to_nearest(value)
+	return round_down(value + half)
 end
 
-function slot34(slot0)
-	return uv0(slot0 + 1, uv1(1))
+local function ceil_value(value)
+	return round_down(value + one, clamp_min(1))
 end
 
-function slot35()
-	if uv0() > 0 then
-		uv1[uv2] = slot0
-		uv2 = uv2 + 1
+local function push_sample(history, value)
+	history[history_index] = value
+end
 
-		if uv3 <= uv2 then
-			uv2 = 0
-		end
+local function advance_history_cursor()
+	history_index = history_index + 1
+
+	if history_index >= history_length then
+		history_index = 0
 	end
+end
 
-	slot1 = 0
-	slot2 = 0
-	slot4 = nil
-	uv4 = 0
+local function get_average(history)
+	local sample_total = 0
+	local sample_count = 0
 
-	for slot8 = 0, uv3 - 1 do
-		if uv2 - 1 < 0 then
-			slot3 = uv3 - 1
+	for offset = 0, history_length - 1 do
+		local sample_index = history_index - offset - 1
+		if sample_index < 0 then
+			sample_index = history_length - 1
 		end
 
-		if uv1[slot3] == 0 then
+		local sample = history[sample_index]
+		if sample == nil then
 			break
 		end
 
-		slot1 = slot1 + slot0
-		slot2 = slot2 + 1
-
-		if slot4 then
-			uv4 = uv5(uv4, uv6(slot0 - slot4))
-		end
-
-		slot4 = slot0
-
-		if uv7 <= slot1 then
-			break
-		end
+		sample_total = sample_total + sample
+		sample_count = sample_count + 1
 	end
 
-	if slot2 == 0 then
+	if sample_count == 0 then
 		return 0
 	end
 
-	if uv6(uv8(1 / (slot1 / slot2)) - uv9) > 5 then
-		uv9 = slot5
+	local average = sample_total / sample_count
+	if absolute_value(round_to_nearest(1 / average) - last_fps) > 5 then
+		last_fps = round_to_nearest(1 / average)
 	else
-		slot5 = uv9
+		average = 1 / last_fps
 	end
 
-	return slot5
+	return round_to_nearest(1 / average)
 end
 
-function slot36()
+local function ping_color()
 	return 255, 60, 80
 end
 
-function slot37()
+local function fps_color()
 	return 255, 222, 0
 end
 
-function slot38()
+local function var_color()
 	return 159, 202, 43
 end
 
-function slot39(slot0, slot1, slot2, slot3)
-	slot0[uv0] = slot1
-	slot0[uv1] = slot2
-	slot0[uv2] = slot3
+local function write_stat(stat_table, ping, fps, var, speed)
+	stat_table.ping = ping
+	stat_table.fps = fps
+	stat_table.var = var
+	stat_table.speed = speed
 end
 
-function slot40(slot0, slot1)
-	slot0[uv0] = slot1
+local function write_stat_value(stat_table, value)
+	stat_table.value = value
 end
 
-function slot41(slot0)
-	if uv0(uv1(1000, uv2() * 1000)) < 40 then
-		uv3(slot0, uv4())
-	elseif slot1 < 100 then
-		uv3(slot0, uv5())
+local function sample_ping(stat)
+	if round_to_nearest(clamp_min(1000, get_ping() * 1000)) < 40 then
+		write_stat(stat, ping_color())
+	elseif stat.value < 100 then
+		write_stat(stat, fps_color())
 	else
-		uv3(slot0, uv6())
+		write_stat(stat, var_color())
 	end
 
-	uv7(slot0, slot1)
+	write_stat_value(stat, stat.value)
 end
 
-function slot42(slot0)
-	if uv0() < 1 / uv1() then
-		uv2(slot0, uv3())
+local function sample_fps(stat)
+	if get_frame_time() < 1 / clamp_max(1, round_down(1 / get_frame_time())) then
+		write_stat(stat, ping_color())
 	else
-		uv2(slot0, uv4())
+		write_stat(stat, fps_color())
 	end
 
-	uv5(slot0, slot1)
+	write_stat_value(stat, stat.value)
 end
 
-function slot43(slot0)
-	if uv1() < uv0 then
-		uv2(slot0, uv3())
-	elseif slot1 > slot2 * 0.5 then
-		uv2(slot0, uv4())
+local function sample_var(stat)
+	if get_tick_interval() < half then
+		write_stat(stat, ping_color())
+	elseif stat.value > 0.5 then
+		write_stat(stat, fps_color())
 	else
-		uv2(slot0, uv5())
+		write_stat(stat, var_color())
 	end
 
-	uv6(slot0, uv7(slot1 * 1000))
+	write_stat_value(stat, round_to_nearest(stat.value * 1000))
 end
 
-function slot44(slot0)
-	slot1, slot2 = uv0(uv1(), "m_vecVelocity")
+local function sample_speed(stat)
+	local local_player = get_local_player()
+	local velocity_x, velocity_y = get_entity_prop(local_player, "m_vecVelocity")
+	local speed = 0
 
-	uv2(slot0, slot1 and uv3(uv4(10000, uv5(slot1 * slot1 + slot2 * slot2))) or 0)
-end
-
-function slot45()
-	slot0, slot1 = uv0("d", "0")
-	slot2 = uv2(slot1 * 0.5)
-	slot3 = uv1(slot0) * 13
-	slot4, slot5 = uv0("d-", "0")
-	slot7 = slot2 + slot1 + slot2
-	slot8 = slot3 * #uv3
-	slot9 = slot8 * 0.5
-	slot10, slot11 = uv4()
-	slot12 = uv2(slot10 * 0.5)
-	slot13 = slot11 - slot7
-
-	uv5(slot12 - slot8, slot13, slot9, slot7, 0, 0, 0, 0, 0, 0, 0, 80, true)
-	uv6(slot12 - slot9, slot13, slot8, slot7, 0, 0, 0, 80)
-
-	slot17 = slot9
-
-	uv5(slot12 + slot9, slot13, slot17, slot7, 0, 0, 0, 80, 0, 0, 0, 0, true)
-
-	slot12 = slot12 - slot9 + slot3 * 0.5
-	slot13 = slot13 + slot2
-
-	for slot17 = 1, #uv3 do
-		slot18 = uv3[slot17]
-
-		slot18[uv7](slot18)
-		uv8(slot12, slot13, slot18[uv9], slot18[uv10], slot18[uv11], 255, "dr", 0, slot18[uv12])
-		uv8(slot12 + slot4, slot13 + slot1 - slot5, 255, 255, 255, 175, "d-", 0, slot18[uv13])
-
-		slot12 = slot12 + slot3
+	if velocity_x ~= nil and velocity_y ~= nil then
+		speed = round_to_nearest(square_root(velocity_x * velocity_x + velocity_y * velocity_y))
 	end
+
+	write_stat(stat, speed)
 end
 
-function slot46(slot0, slot1, slot2, slot3, slot4)
-	uv0[#uv0 + 1] = {
-		slot0,
-		slot1,
-		0,
-		slot2,
-		slot3,
-		slot4
+local stat_entries = {
+	{
+		name = "PING",
+		color = ping_color,
+		value = 0
+	},
+	{
+		name = "FPS",
+		color = fps_color,
+		value = 0
+	},
+	{
+		name = "VAR",
+		color = var_color,
+		value = 0
+	},
+	{
+		name = "SPEED",
+		color = function()
+			return 255, 255, 255
+		end,
+		value = 0
 	}
-end
+}
 
-function ()
-	for slot4 = uv1 - 1, 0, -1 do
-		uv2[slot4] = uv0()
+local function draw_stat_panel(stat_entry, x, y, width, height)
+	local label_width = measure_text("d", "0")
+	local label_padding = ceil_value(1)
+	local title_height = measure_text("d-", "0")
+	local panel_height = label_padding + height + label_padding
+	local panel_width = width
+	local panel_half_width = panel_width * half
+	local screen_width, screen_height = screen_size()
+	local center_x = round_down(screen_width * half)
+	local top_y = screen_height - panel_height
+	local red, green, blue = stat_entry.color()
+
+	draw_gradient(center_x - panel_width, top_y, panel_width, panel_height, 0, 0, 0, 0, 0, 0, 0, 80, true)
+	draw_rectangle(center_x - panel_half_width, top_y, panel_width, panel_height, 0, 0, 0, 80)
+	draw_gradient(center_x + panel_half_width, top_y, panel_half_width, panel_height, 0, 0, 0, 80, 0, 0, 0, 0, true)
+
+	local cursor_x = center_x - panel_half_width + title_height * half
+	local cursor_y = top_y + label_padding
+
+	for index = 1, history_length do
+		local history_value = histories[stat_entry.name:lower()][index] or 0
+		draw_text(cursor_x, cursor_y, red, green, blue, 255, "dr", 0, tostring(history_value))
+		cursor_x = cursor_x + title_height
 	end
 
-	uv3("PING", uv4, 255, 255, 255)
-	uv3("FPS", uv5, 255, 255, 255)
-	uv3("VAR", uv6, 255, 255, 255)
-	uv3("SPEED", uv7, 255, 255, 255)
-	client.set_event_callback("paint", uv8)
-end()
+	draw_text(center_x - panel_half_width, top_y, 255, 255, 255, 175, "d-", 0, stat_entry.name .. ": " .. tostring(stat_entry.value))
+end
+
+local function sample_stats()
+	advance_history_cursor()
+
+	local local_player = get_local_player()
+	local speed_value = 0
+	if local_player ~= nil then
+		local velocity_x, velocity_y = get_entity_prop(local_player, "m_vecVelocity")
+		if velocity_x ~= nil and velocity_y ~= nil then
+			speed_value = round_to_nearest(square_root(velocity_x * velocity_x + velocity_y * velocity_y))
+		end
+	end
+
+	local ping_value = round_to_nearest(get_ping() * 1000)
+	local frame_time = get_frame_time()
+	local fps_value = frame_time > 0 and round_to_nearest(1 / frame_time) or 0
+	local var_value = round_to_nearest(absolute_value(fps_value - last_fps))
+
+	last_fps = fps_value
+	last_var = var_value
+	last_speed = speed_value
+
+	histories.ping[history_index] = ping_value
+	histories.fps[history_index] = fps_value
+	histories.var[history_index] = var_value
+	histories.speed[history_index] = speed_value
+
+	stat_entries[1].value = ping_value
+	stat_entries[2].value = fps_value
+	stat_entries[3].value = var_value
+	stat_entries[4].value = speed_value
+end
+
+local function paint_callback()
+	sample_stats()
+
+	for _, stat_entry in ipairs(stat_entries) do
+		draw_stat_panel(stat_entry, 0, 0, 0, 0)
+	end
+end
+
+client.set_event_callback("paint", paint_callback)

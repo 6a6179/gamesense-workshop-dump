@@ -1,6 +1,6 @@
-slot0 = require("ffi")
-slot1 = slot0.cast
-slot4 = panorama.loadstring([[
+ffi_module = require("ffi")
+ffi_cast = ffi_module.cast
+panorama_radar_helpers = panorama.loadstring([[
 	var _ClearStylesRecursive = function(panel) {
 		if(panel == "Selected")
 			return
@@ -158,8 +158,8 @@ slot4 = panorama.loadstring([[
 		update_players: _UpdatePlayers
 	}
 ]], "CSGOHud")()
-slot5 = vtable_bind("client.dll", "VClient018", 8, "void*(__thiscall*)(void*)")
-slot6 = slot0.typeof([[
+client_entity_list_vtable = vtable_bind("client.dll", "VClient018", 8, "void*(__thiscall*)(void*)")
+entity_class_t = ffi_module.typeof([[
 	struct {
 		int pad[2];
 		char* name;
@@ -168,171 +168,171 @@ slot6 = slot0.typeof([[
 		int class_id;
 	} *
 ]])
-slot7 = {}
+player_cache = {}
 
-function ()
-	table.clear(uv0)
+(function ()
+	table.clear(ffi_module)
 
 	if entity.get_local_player() == nil then
 		return
 	end
 
-	slot0 = uv1()
+	ffi_module = class_cache()
 
-	while slot0 ~= nil do
-		if uv2(uv3, slot0).class_id > 0 and slot1.recv_table ~= nil then
-			uv0[uv4.string(slot1.name)] = slot1.class_id
+	while ffi_module ~= nil do
+		if refresh_class_cache(ffi_cast, ffi_module).class_id > 0 and ffi_cast.recv_table ~= nil then
+			ffi_module[string_module.string(ffi_cast.name)] = ffi_cast.class_id
 		end
 
-		slot0 = slot1.next
+		ffi_module = ffi_cast.next
 	end
-end()
-assert(slot1("int*", slot1("char*", client.find_signature("client.dll", "h\\xcc\\xcc\\xcc\\xccAE\\xe4A \\xf3~E\\xccf\\xd6ẢA8\\xb9\\xcc\\xcc\\xcc\\xcc\\xe8\\xcc\\xcc\\xcc\\xccj\\xccj\\xccjj`")) + 1)[0] == 2432)
+end)()
+assert(ffi_cast("int*", ffi_cast("char*", client.find_signature("client.dll", "h\\xcc\\xcc\\xcc\\xccAE\\xe4A \\xf3~E\\xccf\\xd6ẢA8\\xb9\\xcc\\xcc\\xcc\\xcc\\xe8\\xcc\\xcc\\xcc\\xccj\\xccj\\xccjj`")) + 1)[0] == 2432)
 
-slot10 = vtable_bind("client_panorama.dll", "VClientEntityList003", 3, "void*(__thiscall*)(void*,int)")
-slot13 = slot1("uintptr_t", slot1("void***(__thiscall*)(void*, const char*)", client.find_signature("client.dll", "U\\x8b\\xecS\\x8b]VW\\x8b\\xf93\\xf69w("))(slot1("void**", slot1("char*", client.find_signature("client.dll", "\\xb9\\xcc\\xcc\\xcc̈F\t") or error("HUD signature outdated")) + 1)[0], "CCSGO_HudRadar"))
-slot14 = slot1("bool(__thiscall*)(void*, int*)", client.find_signature("client.dll", "U\\x8b\\xec\\x83\\xecSV\\x8buW\\x8b\\xf9\\xc7E"))
+entity_list_vtable = vtable_bind("client_panorama.dll", "VClientEntityList003", 3, "void*(__thiscall*)(void*,int)")
+hud_radar_ptr = ffi_cast("uintptr_t", ffi_cast("void***(__thiscall*)(void*, const char*)", client.find_signature("client.dll", "U\\x8b\\xecS\\x8b]VW\\x8b\\xf93\\xf69w("))(ffi_cast("void**", ffi_cast("char*", client.find_signature("client.dll", "\\xb9\\xcc\\xcc\\xcc̈F\t") or error("HUD signature outdated")) + 1)[0], "CCSGO_HudRadar"))
+update_radar_entries = ffi_cast("bool(__thiscall*)(void*, int*)", client.find_signature("client.dll", "U\\x8b\\xec\\x83\\xecSV\\x8buW\\x8b\\xf9\\xc7E"))
 
-function slot15(slot0, slot1)
-	slot2 = uv0.new("uint8_t[32]")
+function clear_player_cache(ffi_module, ffi_cast)
+	radar_panel = ffi_module.new("uint8_t[32]")
 
-	if uv1.CCSPlayer == nil then
-		uv2()
+	if class_cache.CCSPlayer == nil then
+		refresh_class_cache()
 
 		return
 	end
 
-	uv3("bool*", slot2 + 24)[0] = slot0
-	uv3("int*", slot2 + 12)[0] = #slot1
-	slot8 = uv0.new("int[?]", #slot1)
-	uv3("int*", slot2 + 8)[0] = uv3("int", slot8)
+	ffi_cast("bool*", radar_panel + 24)[0] = ffi_module
+	ffi_cast("int*", radar_panel + 12)[0] = #ffi_cast
+	player_index = ffi_module.new("int[?]", #ffi_cast)
+	ffi_cast("int*", radar_panel + 8)[0] = ffi_cast("int", player_index)
 
-	for slot8, slot9 in ipairs(slot1) do
-		slot10 = uv0.new("uint8_t[?]", #slot1 * 100) + (slot8 - 1) * 100
-		slot3[slot8 - 1] = uv3("int", slot10)
-		uv3("int*", slot10 + 8)[0] = slot9.entindex
-		uv3("int*", slot10 + 12)[0] = uv1[entity.get_classname(slot9.entindex)]
-		uv3("int*", slot10 + 16)[0] = slot9.x / 4
-		uv3("int*", slot10 + 20)[0] = slot9.y / 4
-		uv3("int*", slot10 + 24)[0] = slot9.z / 4
-		uv3("int*", slot10 + 28)[0] = slot9.yaw
-		uv3("bool*", slot10 + 32)[0] = slot9.defuser
-		uv3("bool*", slot10 + 34)[0] = slot9.player_has_c4
+	for player_index, player_state in ipairs(ffi_cast) do
+		entity_list_vtable = ffi_module.new("uint8_t[?]", #ffi_cast * 100) + (player_index - 1) * 100
+		entity_class_lookup[player_index - 1] = ffi_cast("int", entity_list_vtable)
+		ffi_cast("int*", entity_list_vtable + 8)[0] = player_state.entindex
+		ffi_cast("int*", entity_list_vtable + 12)[0] = class_cache[entity.get_classname(player_state.entindex)]
+		ffi_cast("int*", entity_list_vtable + 16)[0] = player_state.x / 4
+		ffi_cast("int*", entity_list_vtable + 20)[0] = player_state.y / 4
+		ffi_cast("int*", entity_list_vtable + 24)[0] = player_state.z / 4
+		ffi_cast("int*", entity_list_vtable + 28)[0] = player_state.yaw
+		ffi_cast("bool*", entity_list_vtable + 32)[0] = player_state.defuser
+		ffi_cast("bool*", entity_list_vtable + 34)[0] = player_state.player_has_c4
 	end
 
-	uv4(uv3("void*", uv5 - 20), uv3("int*", slot2))
+	string_module(ffi_cast("void*", panorama_radar_helpers - 20), ffi_cast("int*", radar_panel))
 end
 
-slot16 = nil
+radar_target = nil
 
 client.set_event_callback("level_init", function ()
-	uv0 = nil
+	ffi_module = nil
 
-	client.delay_call(1, uv1)
+	client.delay_call(1, class_cache)
 end)
-client.set_event_callback("round_end", slot8)
-client.set_event_callback("player_connect_full", slot8)
+client.set_event_callback("round_end", player_index)
+client.set_event_callback("player_connect_full", player_index)
 
-function slot17()
-	slot0 = {}
-	slot1 = {}
+function collect_radar_players()
+	ffi_module = {}
+	ffi_cast = {}
 
 	if entity.get_local_player() == nil then
 		return
 	end
 
-	slot3, slot4 = nil
-	slot5 = cvar.mp_teammates_are_enemies:get_int() ~= 0
-	slot7 = nil
+	entity_class_lookup, panorama_radar_helpers = nil
+	client_entity_list_vtable = cvar.mp_teammates_are_enemies:get_int() ~= 0
+	player_cache = nil
 
-	if not (entity.get_prop(slot2, "deadflag") == 0) then
-		slot7 = entity.get_prop(slot2, "m_hObserverTarget")
+	if not (entity.get_prop(radar_panel, "deadflag") == 0) then
+		player_cache = entity.get_prop(radar_panel, "m_hObserverTarget")
 	end
 
-	if slot5 then
-		slot3 = select(3, entity.get_origin(slot2))
-		slot4 = entity.get_prop(slot2, "m_iTeamNum")
+	if client_entity_list_vtable then
+		entity_class_lookup = select(3, entity.get_origin(radar_panel))
+		panorama_radar_helpers = entity.get_prop(radar_panel, "m_iTeamNum")
 	end
 
-	slot9 = entity.get_prop(entity.get_player_resource(), "m_iPlayerC4")
-	slot10 = nil
+	player_state = entity.get_prop(entity.get_player_resource(), "m_iPlayerC4")
+	entity_list_vtable = nil
 
-	for slot14 = 1, globals.maxplayers() do
-		if slot14 ~= slot2 and entity.get_classname(slot14) == "CCSPlayer" and entity.is_enemy(slot14) then
-			if slot5 then
-				slot16 = uv1("int64_t*", uv1("char*", uv0(slot14)) + uv2)
-				slot16[0] = bit.bor(slot16[0], bit.lshift(1, slot2 - 1))
+	for update_radar_entries = 1, globals.maxplayers() do
+		if update_radar_entries ~= radar_panel and entity.get_classname(update_radar_entries) == "CCSPlayer" and entity.is_enemy(update_radar_entries) then
+			if client_entity_list_vtable then
+				radar_target = class_cache("int64_t*", class_cache("char*", ffi_module(update_radar_entries)) + refresh_class_cache)
+				radar_target[0] = bit.bor(radar_target[0], bit.lshift(1, radar_panel - 1))
 			end
 
-			entity.set_prop(slot14, "m_bSpotted", 1)
+			entity.set_prop(update_radar_entries, "m_bSpotted", 1)
 
-			slot16 = entity.is_alive(slot14)
-			slot0[string.format("Player%d", slot14 - 1)] = {
-				name = entity.get_player_name(slot14),
-				entindex = slot14,
-				dormant = slot15,
-				alive = slot16,
-				alpha = entity.is_dormant(slot14) and math.floor(entity.get_esp_data(slot14).alpha * 80 + 0.5) / 80 or 1,
-				observed = slot14 == slot7
+			radar_target = entity.is_alive(update_radar_entries)
+			ffi_module[string.format("Player%d", update_radar_entries - 1)] = {
+				name = entity.get_player_name(update_radar_entries),
+				entindex = update_radar_entries,
+				dormant = clear_player_cache,
+				alive = radar_target,
+				alpha = entity.is_dormant(update_radar_entries) and math.floor(entity.get_esp_data(update_radar_entries).alpha * 80 + 0.5) / 80 or 1,
+				observed = update_radar_entries == player_cache
 			}
 
-			if slot16 and (not slot15 or slot17.alpha > 0) then
-				slot19, slot20, slot21 = entity.get_origin(slot14)
+			if radar_target and (not clear_player_cache or collect_radar_players.alpha > 0) then
+				clear_observer_target, toggle_radar_hooks, player_z = entity.get_origin(update_radar_entries)
 
-				if slot5 and slot14 ~= slot7 and entity.get_prop(slot14, "m_iTeamNum") == slot4 then
-					slot21 = slot3 - 500
+				if client_entity_list_vtable and update_radar_entries ~= player_cache and entity.get_prop(update_radar_entries, "m_iTeamNum") == panorama_radar_helpers then
+					player_z = entity_class_lookup - 500
 				end
 
-				table.insert(slot1, {
+				table.insert(ffi_cast, {
 					player_has_c4 = false,
 					player_has_defuser = false,
 					defuser = false,
 					yaw = 0,
-					entindex = slot14,
-					x = slot19,
-					y = slot20,
-					z = slot21
+					entindex = update_radar_entries,
+					x = clear_observer_target,
+					y = toggle_radar_hooks,
+					z = player_z
 				})
 
-				if slot9 == slot14 and entity.is_dormant(slot14) then
-					slot10 = slot14
+				if player_state == update_radar_entries and entity.is_dormant(update_radar_entries) then
+					entity_list_vtable = update_radar_entries
 				end
 			end
 		end
 	end
 
-	uv3(false, slot1)
+	ffi_cast(false, ffi_cast)
 
-	if json.stringify(slot0) ~= uv4 then
-		uv4 = slot11
+	if json.stringify(ffi_module) ~= string_module then
+		string_module = local_player_ref
 
-		uv5.update_players(slot0, slot5, slot6, slot10)
+		panorama_radar_helpers.update_players(ffi_module, client_entity_list_vtable, entity_class_t, entity_list_vtable)
 	end
 end
 
-function slot18()
-	uv0 = nil
+function reset_radar_cache()
+	ffi_module = nil
 end
 
-function slot19()
-	uv0 = nil
+function clear_observer_target()
+	ffi_module = nil
 
-	uv1.update_players({}, false, false, nil)
+	class_cache.update_players({}, false, false, nil)
 end
 
-function slot20()
-	if ui.get(uv0) and ui.get(uv1) then
-		client.set_event_callback("pre_render", uv2)
-		client.set_event_callback("shutdown", uv3)
-		client.set_event_callback("spec_target_updated", uv4)
+function toggle_radar_hooks()
+	if ui.get(ffi_module) and ui.get(class_cache) then
+		client.set_event_callback("pre_render", refresh_class_cache)
+		client.set_event_callback("shutdown", ffi_cast)
+		client.set_event_callback("spec_target_updated", string_module)
 	else
-		client.unset_event_callback("pre_render", uv2)
-		client.unset_event_callback("shutdown", uv3)
-		client.unset_event_callback("spec_target_updated", uv4)
-		uv3()
+		client.unset_event_callback("pre_render", refresh_class_cache)
+		client.unset_event_callback("shutdown", ffi_cast)
+		client.unset_event_callback("spec_target_updated", string_module)
+		ffi_cast()
 	end
 end
 
-ui.set_callback(ui.reference("VISUALS", "Player ESP", "Dormant"), slot20)
-ui.set_callback(ui.reference("VISUALS", "Other ESP", "Radar"), slot20)
-slot20()
+ui.set_callback(ui.reference("VISUALS", "Player ESP", "Dormant"), toggle_radar_hooks)
+ui.set_callback(ui.reference("VISUALS", "Other ESP", "Radar"), toggle_radar_hooks)
+toggle_radar_hooks()

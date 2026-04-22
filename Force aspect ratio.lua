@@ -1,68 +1,60 @@
-slot1 = client.set_cvar
-slot2 = math.fmod
-slot3 = tonumber
-slot4 = ui.get
-slot5 = ui.new_slider
-slot6 = ui.set_callback
-slot7 = ui.set_visible
+local set_cvar = client.set_cvar
+local get_ui = ui.get
+local new_slider = ui.new_slider
+local set_callback = ui.set_callback
+local set_visible = ui.set_visible
 
-function slot8(slot0)
-	slot1, slot2 = uv0()
-	slot3 = slot1 * slot0 / slot2
+local aspect_slider
+local screen_width, screen_height = client.screen_size()
+local aspect_step = 0.01
+local aspect_steps = 200
 
-	if slot0 == 1 then
-		slot3 = 0
+local function gcd(a, b)
+	while b ~= 0 do
+		a, b = b, math.fmod(a, b)
 	end
 
-	uv1("r_aspectratio", uv2(slot3))
+	return a
 end
 
-function slot9(slot0, slot1)
-	while slot0 ~= 0 do
-		slot0 = uv0(slot0, slot0)
-	end
-
-	return slot1
+local function apply_aspect_ratio()
+	local ratio_value = 2 - get_ui(aspect_slider) * aspect_step
+	set_cvar("r_aspectratio", tostring(ratio_value))
 end
 
-slot10, slot11, slot12 = nil
+local function rebuild_slider(width, height)
+	screen_width, screen_height = width, height
 
-function slot13()
-	uv2(2 - uv0(uv1) * 0.01)
-end
+	local labels = {}
+	for step = 1, aspect_steps do
+		local ratio = (aspect_steps - step) * aspect_step
+		local ratio_width = math.floor(width * ratio + 0.5)
+		local ratio_height = height
+		local divisor = gcd(ratio_width, ratio_height)
 
-slot14 = 0.01
-slot15 = 200
-
-function (slot0, slot1)
-	uv1 = slot1
-	uv0 = slot0
-	slot2 = {
-		[slot6] = uv0 * slot7 / slot8 .. ":" .. uv1 / slot8
-	}
-
-	for slot6 = 1, uv2 do
-		slot7 = (uv2 - slot6) * uv3
-
-		if uv0 * slot7 / uv4(uv0 * slot7, uv1) < 100 or slot7 == 1 then
-			-- Nothing
+		if divisor == 0 then
+			labels[step] = string.format("%.2f:1", ratio)
+		else
+			labels[step] = string.format("%d:%d", ratio_width / divisor, ratio_height / divisor)
 		end
 	end
 
-	if uv5 ~= nil then
-		uv6(uv5, false)
-		uv7(uv5, function ()
+	if aspect_slider ~= nil then
+		set_visible(aspect_slider, false)
+		set_callback(aspect_slider, function()
 		end)
 	end
 
-	uv5 = uv8("VISUALS", "Effects", "Force aspect ratio", 0, uv2 - 1, uv2 / 2, true, "%", 1, slot2)
+	aspect_slider = new_slider("VISUALS", "Effects", "Force aspect ratio", 0, aspect_steps - 1, aspect_steps / 2, true, "%", 1, labels)
+	set_callback(aspect_slider, apply_aspect_ratio)
+	apply_aspect_ratio()
+end
 
-	uv7(uv5, uv9)
-end(client.screen_size())
-client.set_event_callback("paint", function (slot0)
-	slot1, slot2 = uv0()
+rebuild_slider(screen_width, screen_height)
 
-	if slot1 ~= uv1 or slot2 ~= uv2 then
-		uv3(slot1, slot2)
+client.set_event_callback("paint", function()
+	local current_width, current_height = client.screen_size()
+	if current_width ~= screen_width or current_height ~= screen_height then
+		rebuild_slider(current_width, current_height)
 	end
 end)

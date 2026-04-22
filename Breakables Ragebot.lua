@@ -1,11 +1,19 @@
-slot0 = require("vector")
-slot1 = require("gamesense/csgo_weapons")
-slot3 = true
-slot4 = false
+local vector = require("vector")
+local weapons = require("gamesense/csgo_weapons")
 
-function slot5(slot0, slot1)
-	for slot5, slot6 in ipairs(slot0) do
-		if slot6 == slot1 then
+local ignored_weapon_types = {
+	"taser",
+	"grenade",
+	"c4"
+}
+
+local breakable_ragebot_enabled = false
+local cached_breakables = {}
+local max_target_distance = 64
+
+local function contains_value(values, needle)
+	for index = 1, #values do
+		if values[index] == needle then
 			return true
 		end
 	end
@@ -13,173 +21,176 @@ function slot5(slot0, slot1)
 	return false
 end
 
-slot6 = false
-slot7 = {}
-slot8 = {
-	"taser",
-	"grenade",
-	"c4"
-}
-slot9 = 64
-
-function slot10(slot0)
-	if entity.get_prop(slot0, "m_nModelIndex") == 824 then
-		slot1 = uv0(entity.get_origin(slot0))
-		slot1.x = slot1.x - 15
-
-		return slot1
+local function get_entity_position(entity_index)
+	if entity.get_prop(entity_index, "m_nModelIndex") == 824 then
+		local adjusted_position = vector(entity.get_origin(entity_index))
+		adjusted_position.x = adjusted_position.x - 15
+		return adjusted_position
 	end
 
-	return uv0(entity.get_origin(slot0)) + uv0(entity.get_prop(slot0, "m_vecMins")) / 2 + uv0(entity.get_prop(slot0, "m_vecMaxs")) / 2
+	return vector(entity.get_origin(entity_index)) + vector(entity.get_prop(entity_index, "m_vecMins")) / 2 + vector(entity.get_prop(entity_index, "m_vecMaxs")) / 2
 end
 
-function slot11()
-	slot0 = {}
+local function get_breakable_entities()
+	local breakables = {}
 
-	for slot4 = 65, 1000 do
-		slot5, slot6 = pcall(entity.get_prop, slot4, "m_MoveType")
+	for entity_index = 65, 1000 do
+		local success, move_type = pcall(entity.get_prop, entity_index, "m_MoveType")
 
-		if slot5 and slot6 == 7 and bit.band(entity.get_prop(slot4, "m_usSolidFlags"), 65535) == 2048 then
-			slot0[#slot0 + 1] = slot4
+		if success and move_type == 7 and bit.band(entity.get_prop(entity_index, "m_usSolidFlags"), 65535) == 2048 then
+			breakables[#breakables + 1] = entity_index
 		end
 	end
 
-	return slot0
+	return breakables
 end
 
-function slot12()
-	uv0 = {}
+local function get_visible_breakables()
+	cached_breakables = {}
 
-	if #uv1() > 0 then
-		if uv2 then
-			uv0 = slot0
+	local local_player = entity.get_local_player()
+	if local_player == nil then
+		return cached_breakables
+	end
 
-			return
+	local eye_position = client.eye_position()
+	local player_velocity = vector(entity.get_prop(local_player, "m_vecVelocity"))
+	player_velocity.z = 0
+
+	local predicted_eye_position = vector(eye_position) + player_velocity:scaled(globals.tickinterval() * 64)
+	local breakables = get_breakable_entities()
+
+	for _, entity_index in ipairs(breakables) do
+		local trace_fraction, hit_entity = client.trace_line(local_player, eye_position.x, eye_position.y, eye_position.z, predicted_eye_position.x, predicted_eye_position.y, predicted_eye_position.z)
+
+		if hit_entity == entity_index then
+			cached_breakables[#cached_breakables + 1] = entity_index
+			break
 		end
+	end
 
-		slot3 = uv3(entity.get_prop(entity.get_local_player(), "m_vecVelocity"))
-		slot3.z = 0
-		slot3 = uv3(client.eye_position()) + slot3:scaled(globals.tickinterval() * 64)
+	if #cached_breakables == 0 then
+		local camera_direction = vector():init_from_angles(client.camera_angles())
+		camera_direction:scale(32)
+		camera_direction = camera_direction + predicted_eye_position
 
-		for slot7, slot8 in ipairs(slot0) do
-			slot9, slot10 = client.trace_line(entity.get_local_player(), slot2.x, slot2.y, slot2.z, slot3.x, slot3.y, slot3.z)
+		for _, entity_index in ipairs(breakables) do
+			local trace_fraction, hit_entity = client.trace_line(local_player, eye_position.x, eye_position.y, eye_position.z, camera_direction.x, camera_direction.y, camera_direction.z)
 
-			if slot10 == slot8 then
-				uv0[#uv0 + 1] = slot8
-
+			if hit_entity == entity_index then
+				cached_breakables[#cached_breakables + 1] = entity_index
 				break
 			end
 		end
-
-		if #uv0 == 0 then
-			slot4 = uv3():init_from_angles(client.camera_angles())
-
-			slot4:scale(uv4 / 2)
-
-			slot4 = slot4 + slot2
-
-			for slot8, slot9 in ipairs(slot0) do
-				slot10, slot11 = client.trace_line(slot1, slot2.x, slot2.y, slot2.z, slot4.x, slot4.y, slot4.z)
-
-				if slot11 == slot9 then
-					uv0[#uv0 + 1] = slot9
-
-					break
-				end
-			end
-		end
-	end
-end
-
-function slot13(slot0)
-	slot1 = uv0(entity.get_origin(slot0))
-	slot6 = uv0(renderer.world_to_screen(uv1(slot0):unpack()))
-	slot7 = uv0(renderer.world_to_screen((slot1 + uv0(entity.get_prop(slot0, "m_vecMins"))):unpack()))
-	slot8 = uv0(renderer.world_to_screen((slot1 + uv0(entity.get_prop(slot0, "m_vecMaxs"))):unpack()))
-
-	renderer.line(slot7.x, slot7.y, slot8.x, slot8.y, 0, 0, 0, 255)
-	renderer.circle(slot6.x, slot6.y, 50, 50, 50, 255, 3, 0, 100)
-end
-
-function slot14(slot0, slot1)
-	if math.min(1, 2 - uv0(slot0):dist(slot1) / (uv1 * 2)) > 0 then
-		slot5, slot6, slot7 = nil
-		slot8 = uv2(renderer.world_to_screen(slot2:unpack()))
-
-		renderer.circle(slot8.x, slot8.y, uv1 < slot3 and 255 or 0, slot4 == 1 and 255 or 0, 0, 255 * slot4, 5, 0, 100)
-	end
-end
-
-function slot15()
-	for slot4, slot5 in ipairs(uv1) do
-		uv2(slot5, uv0(client.eye_position()))
 	end
 
-	if uv3 then
-		for slot4, slot5 in ipairs(uv4()) do
-			uv5(slot5)
-		end
-
-		slot1 = uv0(entity.get_prop(entity.get_local_player(), "m_vecVelocity"))
-		slot1.z = 0
-		slot2 = uv0(renderer.world_to_screen(slot0:unpack()))
-		slot3 = uv0(renderer.world_to_screen((slot0 + slot1:scaled(globals.tickinterval() * uv6)):unpack()))
-
-		renderer.line(slot2.x, slot2.y, slot3.x, slot3.y, 255, 255, 255, 255)
-
-		slot4 = uv0():init_from_angles(client.camera_angles())
-
-		slot4:scale(1024)
-
-		slot4 = slot4 + slot0
-		slot5, slot6 = client.trace_line(entity.get_local_player(), slot0.x, slot0.y, slot0.z, slot4.x, slot4.y, slot4.z)
-
-		renderer.text(1280, 730, 255, 255, 255, 255, "cd", 0, string.format("%.2f %d", slot5, slot6))
-		cvar.cl_pdump:set_int(slot6)
-
-		if slot6 ~= -1 then
-			print(bit.band(entity.get_prop(slot6, "m_nSolidType"), 65535))
-			uv5(slot6)
-		end
-	end
+	return cached_breakables
 end
 
-function slot16(slot0)
-	if uv0(entity.get_player_weapon(entity.get_local_player())) == nil then
+local function draw_breakable_marker(entity_index)
+	local origin = get_entity_position(entity_index)
+	local screen_origin = vector(renderer.world_to_screen(origin:unpack()))
+	local mins_screen = vector(renderer.world_to_screen((vector(entity.get_origin(entity_index)) + vector(entity.get_prop(entity_index, "m_vecMins"))):unpack()))
+	local maxs_screen = vector(renderer.world_to_screen((vector(entity.get_origin(entity_index)) + vector(entity.get_prop(entity_index, "m_vecMaxs"))):unpack()))
+
+	renderer.line(mins_screen.x, mins_screen.y, maxs_screen.x, maxs_screen.y, 0, 0, 0, 255)
+	renderer.circle(screen_origin.x, screen_origin.y, 50, 50, 50, 255, 3, 0, 100)
+end
+
+local function paint_callback()
+	local local_player = entity.get_local_player()
+	if local_player == nil then
 		return
 	end
 
-	if math.max(0, entity.get_prop(slot2, "m_flNextPrimaryAttack") or 0, entity.get_prop(slot1, "m_flNextAttack") or 0) - globals.curtime() < 0 and (slot3.type == "knife" or entity.get_prop(slot2, "m_iClip1") > 0) and not uv1(uv2, slot3.type) then
-		slot5 = uv3(client.eye_position())
-		slot7 = nil
+	for _, breakable_entity in ipairs(get_visible_breakables()) do
+		draw_breakable_marker(breakable_entity)
+	end
 
-		for slot11, slot12 in ipairs(uv4) do
-			if slot5:dist(uv5(slot12)) < uv6 and slot14 < 256 then
-				slot15, slot16 = client.trace_line(slot1, slot5.x, slot5.y, slot5.z, slot13.x, slot13.y, slot13.z)
+	local eye_position = client.eye_position()
+	local velocity = vector(entity.get_prop(local_player, "m_vecVelocity"))
+	velocity.z = 0
 
-				if slot15 >= 0.95 or slot16 == slot12 then
-					slot6 = slot14
-					slot7 = slot13
-				end
+	local eye_screen = vector(renderer.world_to_screen(eye_position:unpack()))
+	local predicted_eye_screen = vector(renderer.world_to_screen((eye_position + velocity:scaled(globals.tickinterval() * 64)):unpack()))
+	renderer.line(eye_screen.x, eye_screen.y, predicted_eye_screen.x, predicted_eye_screen.y, 255, 255, 255, 255)
+end
+
+local function find_best_breakable_target()
+	local local_player = entity.get_local_player()
+	if local_player == nil then
+		return nil
+	end
+
+	local player_weapon = entity.get_player_weapon(local_player)
+	if player_weapon == nil then
+		return nil
+	end
+
+	local weapon_definition = weapons(player_weapon)
+	if weapon_definition == nil then
+		return nil
+	end
+
+	if math.max(0, entity.get_prop(player_weapon, "m_flNextPrimaryAttack") or 0, entity.get_prop(local_player, "m_flNextAttack") or 0) - globals.curtime() >= 0 then
+		return nil
+	end
+
+	if weapon_definition.type ~= "knife" and entity.get_prop(player_weapon, "m_iClip1") <= 0 then
+		return nil
+	end
+
+	if contains_value(ignored_weapon_types, weapon_definition.type) then
+		return nil
+	end
+
+	local eye_position = vector(client.eye_position())
+	local best_target = nil
+	local best_distance = math.huge
+
+	for _, entity_index in ipairs(get_breakable_entities()) do
+		local target_position = get_entity_position(entity_index)
+		local distance = eye_position:dist(target_position)
+
+		if distance < max_target_distance and distance < best_distance then
+			local trace_fraction, hit_entity = client.trace_line(local_player, eye_position.x, eye_position.y, eye_position.z, target_position.x, target_position.y, target_position.z)
+
+			if trace_fraction >= 0.95 or hit_entity == entity_index then
+				best_distance = distance
+				best_target = target_position
 			end
 		end
+	end
 
-		if slot7 ~= nil then
-			slot0.pitch, slot0.yaw = slot5:to(slot7):angles()
-			slot0.in_attack = 1
-		end
+	return best_target
+end
+
+local function setup_command_callback(command)
+	local target_position = find_best_breakable_target()
+	if target_position == nil then
+		return
+	end
+
+	local eye_position = vector(client.eye_position())
+	command.pitch, command.yaw = eye_position:to(target_position):angles()
+	command.in_attack = 1
+end
+
+local function update_callbacks()
+	if breakable_ragebot_enabled then
+		client.set_event_callback("paint", paint_callback)
+		client.set_event_callback("setup_command", setup_command_callback)
+	else
+		client.unset_event_callback("paint", paint_callback)
+		client.unset_event_callback("setup_command", setup_command_callback)
 	end
 end
 
-function slot17()
-	ui.get(uv0) and client.set_event_callback or client.unset_event_callback("net_update_end", uv1)
+local breakables_ragebot_toggle = ui.new_checkbox("MISC", "Miscellaneous", "Breakables Ragebot")
+ui.set_callback(breakables_ragebot_toggle, function()
+	breakable_ragebot_enabled = ui.get(breakables_ragebot_toggle)
+	update_callbacks()
+end)
 
-	if uv2 then
-		slot1("paint", uv3)
-	end
-
-	slot1("setup_command", uv4)
-end
-
-ui.set_callback(ui.new_checkbox("MISC", "Miscellaneous", "Breakables Ragebot"), slot17)
-slot17()
+breakable_ragebot_enabled = ui.get(breakables_ragebot_toggle)
+update_callbacks()

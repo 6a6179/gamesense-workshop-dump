@@ -1,88 +1,67 @@
-slot0 = bit.band
-slot1 = entity.get_local_player
-slot2 = entity.get_prop
-slot3 = entity.is_alive
-slot4 = entity.set_prop
-slot5 = pairs
-slot6 = ui.get
-slot10 = require("gamesense/csgo_weapons")
-slot11 = require("table.clear")
+local bit_band = bit.band
+local get_local_player = entity.get_local_player
+local get_prop = entity.get_prop
+local is_alive = entity.is_alive
+local set_prop = entity.set_prop
+local weapons = require("gamesense/csgo_weapons")
 
-function slot13(slot0)
-	for slot5 = 1, #slot0 do
-	end
-
-	return {
-		[slot0[slot5]] = slot5
-	}
-end
-
-slot15 = {}
-slot17 = ui.new_multiselect("SKINS", "Model options", "\nActive rare animations", function (slot0, slot1)
-	for slot6, slot7 in uv0(slot0) do
-		-- Nothing
-	end
-
-	return {
-		[slot6] = slot1(slot7)
-	}
-end({
+local rare_animation_sets = {
 	{
-		weapon = slot10.weapon_knife_butterfly,
+		weapon = weapons.weapon_knife_butterfly,
 		overrides = {
-			0,
+			[0] = 0,
 			[13.0] = 15,
 			[14.0] = 15
 		}
 	},
 	{
-		weapon = slot10.weapon_knife_falchion,
+		weapon = weapons.weapon_knife_falchion,
 		overrides = {
 			[12.0] = 13
 		}
 	},
 	{
-		weapon = slot10.weapon_knife_ursus,
+		weapon = weapons.weapon_knife_ursus,
 		overrides = {
 			[0] = 1,
 			[14.0] = 13
 		}
 	},
 	{
-		weapon = slot10.weapon_knife_stiletto,
+		weapon = weapons.weapon_knife_stiletto,
 		overrides = {
 			[13.0] = 12
 		}
 	},
 	{
-		weapon = slot10.weapon_knife_widowmaker,
+		weapon = weapons.weapon_knife_widowmaker,
 		overrides = {
 			[14.0] = 15
 		}
 	},
 	{
-		weapon = slot10.weapon_knife_skeleton,
+		weapon = weapons.weapon_knife_skeleton,
 		overrides = {
 			[0] = 1,
 			[13.0] = 14
 		}
 	},
 	{
-		weapon = slot10.weapon_knife_canis,
+		weapon = weapons.weapon_knife_canis,
 		overrides = {
 			[0] = 1,
 			[14.0] = 13
 		}
 	},
 	{
-		weapon = slot10.weapon_knife_cord,
+		weapon = weapons.weapon_knife_cord,
 		overrides = {
 			[0] = 1,
 			[14.0] = 13
 		}
 	},
 	{
-		weapon = slot10.weapon_knife_outdoor,
+		weapon = weapons.weapon_knife_outdoor,
 		overrides = {
 			[14.0] = 13
 		},
@@ -91,56 +70,103 @@ end({
 		}
 	},
 	{
-		weapon = slot10.weapon_deagle,
+		weapon = weapons.weapon_deagle,
 		overrides = {
 			[7.0] = 8
 		}
 	},
 	{
-		weapon = slot10.weapon_revolver,
+		weapon = weapons.weapon_revolver,
 		overrides = {
 			[3.0] = 4
 		}
 	}
-}, function (slot0)
-	return slot0.name or slot0.weapon.name
-end))
+}
 
-ui.set_visible(slot17, false)
-ui.set_callback(ui.new_checkbox("SKINS", "Model options", "Rare weapon animations"), function ()
-	uv0(uv1, uv2(uv3))
-end)
-ui.set_callback(slot17, function ()
-	uv0(uv1)
+local function build_name_lookup(values)
+	local lookup = {}
+	for index = 1, #values do
+		lookup[values[index]] = true
+	end
+	return lookup
+end
 
-	for slot4 = 1, #uv5 do
-		if uv2(uv3(uv4))[uv5[slot4].name or slot5.weapon.name] ~= nil then
-			uv1[slot6] = uv1[slot5.weapon.idx] or {}
+local function build_option_names()
+	local names = {}
+	for index = 1, #rare_animation_sets do
+		names[index] = rare_animation_sets[index].weapon.name
+	end
+	return names
+end
 
-			for slot10, slot11 in uv6(slot5.overrides) do
-				uv1[slot6][slot10] = slot11
+local function clear_table_values(target)
+	for key in pairs(target) do
+		target[key] = nil
+	end
+end
+
+local enabled_checkbox = ui.new_checkbox("SKINS", "Model options", "Rare weapon animations")
+local weapon_selector = ui.new_multiselect("SKINS", "Model options", "\nActive rare animations", table.unpack(build_option_names()))
+local active_overrides = {}
+
+local function apply_selected_overrides()
+	clear_table_values(active_overrides)
+
+	local selected_names = build_name_lookup(ui.get(weapon_selector))
+	for index = 1, #rare_animation_sets do
+		local weapon_set = rare_animation_sets[index]
+		if selected_names[weapon_set.weapon.name] then
+			active_overrides[weapon_set.weapon.idx] = active_overrides[weapon_set.weapon.idx] or {}
+			for sequence, replacement in pairs(weapon_set.overrides) do
+				active_overrides[weapon_set.weapon.idx][sequence] = replacement
 			end
 		end
 	end
+end
+
+ui.set_visible(weapon_selector, false)
+
+ui.set_callback(enabled_checkbox, function()
+	local enabled = ui.get(enabled_checkbox)
+	ui.set_visible(weapon_selector, enabled)
+	if not enabled then
+		clear_table_values(active_overrides)
+	else
+		apply_selected_overrides()
+	end
 end)
-client.set_event_callback("net_update_start", function ()
-	if not uv0(uv1) then
+
+ui.set_callback(weapon_selector, apply_selected_overrides)
+
+client.set_event_callback("net_update_start", function()
+	if not ui.get(enabled_checkbox) then
 		return
 	end
 
-	if uv2() == nil or not uv3(slot0) then
+	local local_player = get_local_player()
+	if local_player == nil or not is_alive(local_player) then
 		return
 	end
 
-	if uv4(slot0, "m_hViewModel[0]") == nil then
+	local view_model = get_prop(local_player, "m_hViewModel[0]")
+	if view_model == nil then
 		return
 	end
 
-	if uv4(slot1, "m_hWeapon") == nil then
+	local weapon_handle = get_prop(view_model, "m_hWeapon")
+	if weapon_handle == nil then
 		return
 	end
 
-	if uv6[uv5(uv4(slot2, "m_iItemDefinitionIndex") or 0, 65535)] ~= nil and slot4[uv4(slot1, "m_nSequence")] ~= nil then
-		uv7(slot1, "m_nSequence", slot4[slot5])
+	local item_definition_index = bit_band(get_prop(weapon_handle, "m_iItemDefinitionIndex") or 0, 65535)
+	local sequence_overrides = active_overrides[item_definition_index]
+	if sequence_overrides == nil then
+		return
+	end
+
+	local current_sequence = get_prop(view_model, "m_nSequence")
+	local replacement_sequence = sequence_overrides[current_sequence]
+	if replacement_sequence ~= nil then
+		set_prop(view_model, "m_nSequence", replacement_sequence)
 	end
 end)

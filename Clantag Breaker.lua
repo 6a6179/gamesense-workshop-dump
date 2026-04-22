@@ -1,32 +1,20 @@
-slot0 = require("gamesense/inspect")
-slot1 = globals.chokedcommands
-slot2 = entity.get_local_player
-slot3 = entity.get_player_resource
-slot4 = entity.get_prop
-slot5 = table.insert
-slot6 = client.set_clan_tag
+local choke_count = globals.chokedcommands
+local set_clan_tag = client.set_clan_tag
 
-function slot7()
-	return client.random_int(0, 1) == 1
-end
-
-function slot8(slot0, slot1)
-	for slot5, slot6 in pairs(slot0) do
-		if slot6 == slot1 then
-			return true
-		end
+local function randomize_case(text)
+	local characters = {}
+	for index = 1, #text do
+		local character = text:sub(index, index)
+		characters[index] = client.random_int(0, 1) == 1 and character:upper() or character:lower()
 	end
-
-	return false
+	return table.concat(characters)
 end
 
-function slot9(slot0, slot1)
-	if not uv0(slot0, slot1) then
-		uv1(slot0, slot1)
-	end
+local function lower_case(text)
+	return text:lower()
 end
 
-slot10 = {
+local clan_tag_frames = {
 	"\t\t\t  f",
 	"\t\t\t fa",
 	"\t\t\tfat",
@@ -225,28 +213,28 @@ slot10 = {
 	"Novolinehoo",
 	"Novolinehook",
 	"Novolinehook",
-	"⌛ ",
-	"⌛ p",
-	"⌛ pr",
-	"⌛ pri",
-	"⌛ prim",
-	"⌛ primo",
-	"⌛ primor",
-	"⌛ primord",
-	"⌛ primordi",
-	"⌛ primordia",
-	"⌛ primordial",
-	"⌛ primordial",
-	"⌛ primordia",
-	"⌛ primordi",
-	"⌛ primord",
-	"⌛ primor",
-	"⌛ primo",
-	"⌛ prim",
-	"⌛ pri",
-	"⌛ pr",
-	"⌛ p",
-	"⌛ ",
+	"âŒ› ",
+	"âŒ› p",
+	"âŒ› pr",
+	"âŒ› pri",
+	"âŒ› prim",
+	"âŒ› primo",
+	"âŒ› primor",
+	"âŒ› primord",
+	"âŒ› primordi",
+	"âŒ› primordia",
+	"âŒ› primordial",
+	"âŒ› primordial",
+	"âŒ› primordia",
+	"âŒ› primordi",
+	"âŒ› primord",
+	"âŒ› primor",
+	"âŒ› primo",
+	"âŒ› prim",
+	"âŒ› pri",
+	"âŒ› pr",
+	"âŒ› p",
+	"âŒ› ",
 	"n3m3sis",
 	"nemesis",
 	"n3m3sis",
@@ -272,73 +260,48 @@ slot10 = {
 	" e\t\t "
 }
 
-function ()
-	for slot3 = 1, #uv0 do
-		for slot10 = 1, uv0[slot3]:len() do
-			slot11 = slot4:sub(slot10, slot10)
-		end
-
-		uv0[slot3] = table.concat({
-			[slot10] = uv1() and slot11:upper() or slot11:lower()
-		})
-	end
-end()
-
-slot12 = {}
-
-function ()
-	for slot3 = 1, #uv0 do
-		for slot10 = 1, uv0[slot3]:len() do
-		end
-
-		uv1[slot3] = table.concat({
-			[slot10] = slot4:sub(slot10, slot10):lower()
-		})
-	end
-end()
-
-slot14 = 1
-slot15 = {}
-
-function slot16()
-	slot2 = uv2(uv1(), "m_szClan", uv0())
-	slot3 = uv3() == 0
-
-	if uv4 >= #uv5 then
-		uv4 = 1
-	end
-
-	slot4 = uv5[uv4]
-
-	if slot3 then
-		uv6(slot4)
-
-		if slot2:lower() == slot4:lower() then
-			uv7(uv8, slot2)
-
-			uv4 = uv4 + 1
-		end
-	end
-
-	for slot9, slot10 in pairs(uv9) do
-		if uv10(uv8, slot10) then
-			slot5 = 1 + 1
-		end
-	end
-
-	if slot5 == #uv9 then
-		phase1 = false
-	end
+local animated_frames = {}
+local normalized_frames = {}
+for index = 1, #clan_tag_frames do
+	animated_frames[index] = randomize_case(clan_tag_frames[index])
+	normalized_frames[index] = lower_case(clan_tag_frames[index])
 end
 
-ui.set_callback(ui.new_checkbox("LUA", "B", "Break Clantags"), function (slot0)
-	if ui.get(slot0) then
-		client.set_event_callback("paint", uv0)
+local current_frame = 1
+local last_sent_tag = ""
+local next_frame_time = 0
+
+local function on_paint()
+	if globals.chokedcommands ~= 0 then
+		return
+	end
+
+	local now = globals.curtime()
+	if now < next_frame_time then
+		return
+	end
+
+	if current_frame > #animated_frames then
+		current_frame = 1
+	end
+
+	local next_tag = animated_frames[current_frame]
+	set_clan_tag(next_tag)
+	last_sent_tag = next_tag
+	current_frame = current_frame + 1
+	next_frame_time = now + 0.4
+end
+
+ui.set_callback(ui.new_checkbox("LUA", "B", "Break Clantags"), function(enabled)
+	if ui.get(enabled) then
+		client.set_event_callback("paint", on_paint)
 	else
-		client.unset_event_callback("paint", uv0)
+		client.unset_event_callback("paint", on_paint)
 	end
 end)
-client.set_event_callback("level_init", function ()
-	uv0 = 1
-	uv1 = {}
+
+client.set_event_callback("level_init", function()
+	current_frame = 1
+	last_sent_tag = ""
+	next_frame_time = 0
 end)

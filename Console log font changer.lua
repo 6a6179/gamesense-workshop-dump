@@ -1,146 +1,145 @@
-slot0 = require("ffi")
-slot1 = client.create_interface("vguimatsurface.dll", "VGUI_Surface031")
-slot2 = vtable_thunk(71, "unsigned int(__thiscall*)(void*)")
-slot3 = vtable_thunk(72, "void(__thiscall*)(void*, unsigned long, const char*, int, int, int, int, unsigned long, int, int)")
+local ffi = require("ffi")
 
-function slot4(slot0, slot1)
-	slot2 = uv0(uv1)
+local surface_interface = client.create_interface("vguimatsurface.dll", "VGUI_Surface031")
+local create_font = vtable_thunk(71, "unsigned int(__thiscall*)(void*)")
+local set_font_glyph_set = vtable_thunk(72, "void(__thiscall*)(void*, unsigned long, const char*, int, int, int, int, unsigned long, int, int)")
 
-	uv2(uv1, slot2, slot0, slot1, 400, 0, 0, 16, 0, 65535)
-
-	return slot2
+local function create_console_font(font_name, font_size)
+	local font_handle = create_font(surface_interface)
+	set_font_glyph_set(surface_interface, font_handle, font_name, font_size, 400, 0, 0, 16, 0, 65535)
+	return font_handle
 end
 
-slot6 = database.read("Console_UserDefinedFonts") or {}
-slot7 = {}
-slot8 = nil
+local saved_font_names = database.read("Console_UserDefinedFonts") or {}
+local font_handle_cache = {}
+local selected_console_font = nil
+local font_listbox
+local font_size_slider
+local new_font_name_textbox
+local add_font_button
+local delete_font_button
+local font_menu_entries = {}
+
+local console_font_handles = {
+	client = ffi.cast("uint32_t*****", ffi.cast("uint32_t", client.find_signature("client.dll", "\\x8b\r\\xcc\\xcc\\xccÌ‹\\x89")) + 2)[0][0][136],
+	engine = ffi.cast("uint32_t***", ffi.cast("uint32_t", client.find_signature("engine.dll", "\\x8b\\xcc\\xcc\\xccÌ‰]\\xf0")) + 2)[0][0][86]
+}
+
+local original_console_fonts = {
+	history = console_font_handles.client[100][114],
+	entry = console_font_handles.client[101][117],
+	panel = console_font_handles.engine[86]
+}
+
+local function apply_console_font(font_name, font_size)
+	font_handle_cache[font_name] = font_handle_cache[font_name] or {}
+
+	if font_handle_cache[font_name][font_size] == nil then
+		font_handle_cache[font_name][font_size] = create_console_font(font_name, font_size)
+	end
+
+	local font_handle = font_handle_cache[font_name][font_size]
+	console_font_handles.client[100][114] = font_handle
+	console_font_handles.client[101][117] = font_handle
+	console_font_handles.engine[86] = font_handle
+	selected_console_font = {
+		family = font_name,
+		size = font_size
+	}
+end
+
+local function restore_console_fonts()
+	console_font_handles.client[100][114] = original_console_fonts.history
+	console_font_handles.client[101][117] = original_console_fonts.entry
+	console_font_handles.engine[86] = original_console_fonts.panel
+end
+
+local function refresh_font_list()
+	font_menu_entries = {}
+
+	for _, font_name in ipairs(saved_font_names) do
+		table.insert(font_menu_entries, font_name)
+	end
+
+	table.insert(font_menu_entries, "[+] Add New")
+	ui.update(font_listbox, font_menu_entries)
+end
 
 ui.new_label("LUA", "B", "\t~ Console font ~\t")
 ui.new_label("LUA", "B", "~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~")
-ui.set_visible(ui.new_button("LUA", "B", "Add font", function ()
-	table.insert(uv0, ui.get(uv1))
-	ui.set(uv1, "")
-	uv2()
-	uv3()
-	database.write("Console_UserDefinedFonts", uv0)
-end), false)
-ui.set_visible(ui.new_button("LUA", "B", "Delete font", function ()
-	table.remove(uv0, ui.get(uv1) - #uv2 + 1)
-	uv3()
-	uv4()
-	database.write("Console_UserDefinedFonts", uv0)
-end), false)
-ui.set_visible(ui.new_textbox("LUA", "B", "Font Name"), false)
-function ()
-	table.clear(uv0)
 
-	for slot3, slot4 in pairs(uv1) do
-		table.insert(uv0, slot4)
+font_listbox = ui.new_listbox("LUA", "B", "Cosole Font", {})
+font_size_slider = ui.new_slider("LUA", "B", "Cosole Font Size", 12, 40, 18, true, "pt", 1)
+new_font_name_textbox = ui.new_textbox("LUA", "B", "Font Name")
+add_font_button = ui.new_button("LUA", "B", "Add font", function()
+	local font_name = ui.get(new_font_name_textbox)
+
+	if font_name ~= "" then
+		table.insert(saved_font_names, font_name)
+		ui.set(new_font_name_textbox, "")
+		refresh_font_list()
+		ui.set(font_listbox, #saved_font_names - 1)
+		database.write("Console_UserDefinedFonts", saved_font_names)
+	end
+end)
+delete_font_button = ui.new_button("LUA", "B", "Delete font", function()
+	local selected_index = ui.get(font_listbox) or 0
+
+	if selected_index >= #saved_font_names then
+		return
 	end
 
-	for slot3, slot4 in pairs(uv2) do
-		table.insert(uv0, slot4)
-	end
-
-	table.insert(uv0, "[+] Add New")
-	ui.update(uv3, uv0)
-end()
-
-slot16 = slot0.cast("uint32_t*****", slot0.cast("uint32_t", client.find_signature("client.dll", "\\x8b\r\\xcc\\xcc\\xcc̋\\x89")) + 2)[0][0][136]
-slot19 = {
-	m_pHistory = {
-		font = slot16[100][114]
-	},
-	m_pEntry = {
-		font = slot16[101][117]
-	},
-	g_pConPanel = {
-		font = slot0.cast("uint32_t***", slot0.cast("uint32_t", client.find_signature("engine.dll", "\\x8b\\xcc\\xcc\\xcc̉]\\xf0")) + 2)[0][0][86]
-	}
-}
-
-function slot20(slot0)
-	uv0[114] = slot0
-	uv1[117] = slot0
-	uv2[86] = slot0
-end
-
-client.set_event_callback("shutdown", function ()
-	uv0[114] = uv1.m_pHistory.font
-	uv2[117] = uv1.m_pEntry.font
-	uv3[86] = uv1.g_pConPanel.font
+	table.remove(saved_font_names, selected_index + 1)
+	refresh_font_list()
+	ui.set(font_listbox, math.max(0, math.min(selected_index, #saved_font_names - 1)))
+	database.write("Console_UserDefinedFonts", saved_font_names)
 end)
 
-slot21 = {}
+ui.set_visible(add_font_button, false)
+ui.set_visible(delete_font_button, false)
+ui.set_visible(new_font_name_textbox, false)
 
-function slot8(slot0)
-	slot2 = ui.get(uv2)
+local function update_font_controls()
+	local selected_index = ui.get(font_listbox) or 0
+	local selected_family = font_menu_entries[selected_index + 1]
+	local selected_size = ui.get(font_size_slider)
 
-	if uv0[ui.get(uv1) + 1] == nil then
+	if selected_family == nil then
 		return
 	end
 
-	slot3 = slot1 == "[+] Add New"
+	local is_add_new_entry = selected_family == "[+] Add New"
+	ui.set_visible(new_font_name_textbox, is_add_new_entry)
+	ui.set_visible(add_font_button, is_add_new_entry)
+	ui.set_visible(delete_font_button, not is_add_new_entry and #saved_font_names > 0)
 
-	ui.set_visible(uv3, slot3)
-	ui.set_visible(uv4, slot3)
-	ui.set_visible(uv2, not slot3)
-
-	slot4 = false
-
-	for slot8, slot9 in pairs(uv5) do
-		if slot1 == slot9 then
-			slot4 = true
-
-			break
-		end
-	end
-
-	ui.set_visible(uv6, slot4)
-
-	if slot3 then
+	if is_add_new_entry then
 		return
 	end
 
-	if uv7[slot1] ~= nil and uv7[slot1][slot2] ~= nil then
-		uv8(uv7[slot1][slot2])
-
-		return
-	end
-
-	if uv7[slot1] == nil then
-		uv7[slot1] = {}
-	end
-
-	uv7[slot1][slot2] = uv9(slot1, slot2)
-
-	uv8(uv7[slot1][slot2])
+	apply_console_font(selected_family, selected_size)
 	database.write("Console_Font", {
-		family = slot1,
-		size = slot2
+		family = selected_family,
+		size = selected_size
 	})
 end
 
-ui.set_callback(ui.new_listbox("LUA", "B", "Cosole Font", {
-	"Tahoma",
-	"Consolas",
-	"Verdana",
-	"Segoe UI",
-	"Segoe Print"
-}), slot8)
-ui.set_callback(ui.new_slider("LUA", "B", "Cosole Font Size", 12, 40, 18, true, "pt", 1), slot8)
+ui.set_callback(font_listbox, update_font_controls)
+ui.set_callback(font_size_slider, update_font_controls)
 
-if type(database.read("Console_Font")) == "table" and not pcall(function ()
-	for slot3, slot4 in pairs(uv0) do
-		if uv1.family == slot4 then
-			ui.set(uv2, slot3 - 1)
+client.set_event_callback("shutdown", restore_console_fonts)
+
+refresh_font_list()
+
+local saved_console_font = database.read("Console_Font")
+if type(saved_console_font) == "table" and saved_console_font.family ~= nil and saved_console_font.size ~= nil then
+	for index, font_name in ipairs(font_menu_entries) do
+		if font_name == saved_console_font.family then
+			ui.set(font_listbox, index - 1)
+			ui.set(font_size_slider, saved_console_font.size)
+			break
 		end
 	end
-
-	ui.set(uv3, uv1.size)
-end) then
-	ui.set(slot9, 1)
-	ui.set(slot10, 18)
 end
 
-slot8()
+update_font_controls()
